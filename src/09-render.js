@@ -7,7 +7,7 @@ let tanY = Math.tan(cam.fovY/2), tanX = tanY, viewWcss = 1, viewHcss = 1, canvas
 let RT = null, viewFit = 1, LODK = 1, afterFrame = null;   // afterFrame: run once right after the next frame is drawn   // LODK: ray-march step budget, lowered automatically on slow devices
 function freeRT(){ if (!RT) return; for (const k of ['sceneTex','cellTex','glowA','glowB']) gl.deleteTexture(RT[k]); for (const k of ['sceneFBO','cellFBO','glowFA','glowFB']) gl.deleteFramebuffer(RT[k]); }
 function resize(){
-  dpr = Math.min(devicePixelRatio || 1, 2);
+  dpr = WALLPAPER ? 1 : Math.min(devicePixelRatio || 1, 2);
   const cssW = canvas.clientWidth || innerWidth, cssH = canvas.clientHeight || innerHeight;
   canvas.width = Math.max(1, Math.round(cssW*dpr)); canvas.height = Math.max(1, Math.round(cssH*dpr));
   cellW = Math.max(3, Math.round(DETAIL[detailIdx].w*dpr)); cellH = Math.round(cellW*1.8);
@@ -420,6 +420,7 @@ function uiRects(){
   return r;
 }
 function updateLabels(){
+  if (WALLPAPER) return;
   const focus = tour.on ? tour.obj : orbit.lock;
   const clean = focus >= 0 ? focus : cam.focus;   // the object whose disc stays free of other labels (in free flight: the one the camera is centred on)
   const avoid = uiRects(), placed = [];
@@ -483,6 +484,7 @@ function updateLabels(){
   for (const el of starEls) if (el.classList.contains('on') !== el._show) el.classList.toggle('on', el._show);
 }
 function updateHUD(dt){
+  if (WALLPAPER) return;
   roTimer -= dt;
   if (roTimer <= 0){
     roTimer = 0.15;
@@ -1259,7 +1261,19 @@ for (const ev of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown', 'w
 
 // ================================================================ main loop
 // frame time is judged against 60 fps; a capped wallpaper is judged against its own cap, so reaching the cap counts as smooth
-const pace = WALLPAPER ? WALLPAPER_FPS/60 : 1;
+let pace = WALLPAPER ? wallpaperFps/60 : 1;
+function setWallpaperFps(fps){
+  wallpaperFps = Math.min(60, Math.max(10, +fps || 30));
+  pace = WALLPAPER ? wallpaperFps/60 : 1;
+}
+window.setWallpaperFps = setWallpaperFps;
+try {
+  Object.defineProperty(window, 'WALLPAPER_FPS', {
+    get(){ return wallpaperFps; },
+    set(fps){ setWallpaperFps(fps); },
+    configurable: true
+  });
+} catch (e) {}
 let tmT = 0, last = performance.now(), ema = 16, adaptCount = 0, raised = 0, calmT = 0, runTime = 0, resizePending = false, refocusT = 0, lodT = 0;
 addEventListener('resize', () => { if (resizePending) return; resizePending = true; requestAnimationFrame(() => { resizePending = false; resize(); ladTitles(); }); });
 // when zooming out from inside the galaxy, rise gently above the disk so the Milky Way unfolds instead of staying edge-on
@@ -1333,6 +1347,7 @@ function setCaption(txt, btn){
   capEl.hidden = !txt; capBtn.hidden = !btn; if (btn) capBtn.textContent = btn;
 }
 function updateCaption(dt){
+  if (WALLPAPER) return;
   let txt = '', btn = '';
   if (cmp) { txt = cmpText(); btn = 'end compare'; }
   else if (tour.on && tour.phase !== 'fly' && TOUR_CAP[tour.obj]) txt = TOUR_CAP[tour.obj];
@@ -1411,6 +1426,7 @@ function setDeep(kyr){
   deepEl.value = kyr; syncTimeUI();
 }
 function syncTimeUI(){
+  if (WALLPAPER) return;
   const jd = jdNow(), off = jd - realJD();
   tmDate.textContent = fmtJD(jd);
   tmSub.textContent = Math.abs(off) < 0.02 ? 'the Solar System as it is right now' : (off > 0 ? 'the Solar System ' + fmtSpan(off) + ' from now' : 'the Solar System ' + fmtSpan(-off) + ' ago');
@@ -1439,6 +1455,7 @@ function viewHash(){
 }
 let lastHash = '', hashT = 0;
 function updateHash(dt){
+  if (WALLPAPER) return;
   hashT -= dt; if (hashT > 0 || flight) return; hashT = 1;
   const h = viewHash(); if (h === lastHash) return; lastHash = h;
   try { history.replaceState(null, '', '#' + h); } catch (e) {}
@@ -1503,6 +1520,47 @@ function tick(dt){
   if (cmp) placeCompare(dt);
   updateDrift(dt);
 }
+let isFrozen = !!window.__freeze, animFrameId = null, scheduleTimer = null;
+function cancelNextFrame(){
+  if (animFrameId){ cancelAnimationFrame(animFrameId); animFrameId = null; }
+  if (scheduleTimer){ clearTimeout(scheduleTimer); scheduleTimer = null; }
+}
+function queueNextFrame(){
+  cancelNextFrame();
+  if (isFrozen) return;
+  if (WALLPAPER && wallpaperFps < 58){
+    const delay = Math.max(0, (1000/wallpaperFps) - (performance.now() - last) - 3);
+    if (delay > 4){
+      scheduleTimer = setTimeout(() => {
+        scheduleTimer = null;
+        if (!isFrozen && !animFrameId) animFrameId = requestAnimationFrame(frame);
+      }, delay);
+      return;
+    }
+  }
+  animFrameId = requestAnimationFrame(frame);
+}
+function setFreeze(on){
+  const next = !!on;
+  if (isFrozen === next) return;
+  isFrozen = next;
+  if (isFrozen){
+    cancelNextFrame();
+  } else {
+    last = performance.now();
+    queueNextFrame();
+  }
+}
+window.setFreeze = setFreeze;
+try {
+  Object.defineProperty(window, '__freeze', {
+    get(){ return isFrozen; },
+    set(v){ setFreeze(v); },
+    configurable: true
+  });
+} catch (e) {
+  window.__freeze = false;
+}
 // The browser can take the GPU away from the page (a driver reset, a GPU hang in another tab, its own watchdog): drawing stops, a line says so,
 // and when the browser gives the context back the page reloads (every texture, buffer and program would have to be made again). Without
 // preventDefault the context would never come back.
@@ -1510,10 +1568,13 @@ let glLost = false;
 canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); glLost = true; const m = $('#nogl'); m.textContent = 'The browser reset the graphics. The page reloads when they are back, or you can reload it now.'; m.hidden = false; });
 canvas.addEventListener('webglcontextrestored', () => { location.reload(); });
 function frame(now){
-  requestAnimationFrame(frame);
-  if (window.__freeze || glLost){ last = now; return; }
-  // a wallpaper draws at most WALLPAPER_FPS frames a second: the monitor may refresh at 144 Hz, all day, behind every window
-  if (WALLPAPER && now - last < 1000/WALLPAPER_FPS - 2) return;
+  animFrameId = null;
+  if (isFrozen || glLost) return;
+  // a wallpaper draws at most wallpaperFps frames a second: the monitor may refresh at 144 Hz, all day, behind every window
+  if (WALLPAPER && now - last < 1000/wallpaperFps - 3){
+    queueNextFrame();
+    return;
+  }
   const dtR = Math.min((now - last)/1000, 0.25); last = now;
   const hitch = progBusy > 0; progBusy = 0;   // the last frame compiled a shader: its time says nothing about how fast the scene draws
   const dt = Math.min(dtR, 0.05);
@@ -1540,6 +1601,7 @@ function frame(now){
     }
   }
   if (!hintHidden && performance.now() > 18000) hideHint();
+  queueNextFrame();
 }
 document.body.classList.toggle('wallpaper', WALLPAPER);
 resize();
@@ -1558,9 +1620,9 @@ window.__cosmos = { startTour, playFlyby, setMove(o, v, f){ flight = null; tween
   setDays:d => { ssDays = d; }, stepObject, stepAngle, get tourId(){ return TOUR_ID; }, get tourGen(){ return TOUR_GEN; }, randomSeed:n => { RSEED = n >>> 0; }, samePlace, tourable, tourPool, tripClear, dealRandom, RANDOM_W, tripW:(a, b) => tripWeight(tripEnd(a), tripEnd(b)), get nextDeal(){ return nextDeal; }, get stepTarget(){ return flight ? (flight.dest || flight.obj).key : null; }, get via(){ return flight && flight.via ? flight.via.key : null; }, PASS,
   startShipCam, stopShipCam, setShipCamMode, get shipCam(){ return shipCam; }, SHIP_POSE, get saver(){ return SAVER; }, get show(){ return show; }, togglePlay, get flight(){ return flight; },
   goHome, goBack, unlock, leash, get freeFrom(){ return freeFrom; }, proj:k => { const o = typeof k === 'string' ? BYKEY[k] : k, p = projectCSS(o.rel); return p && { x:p.x, y:p.y, z:p.z }; }, get SYSMAG(){ return SYSMAG; },
-  setDetail:i => setOpt('detail', i, true), render, zoomTo, tick, caption:dt => updateCaption(dt), get showcap(){ return SHOWCAP.txt; }, flightDur:() => flight ? flight.dur : 0, hud:() => { roTimer = 0; updateHUD(0.2); },
+  setDetail:i => setOpt('detail', i, true), render, zoomTo, tick, caption:dt => updateCaption(dt), get showcap(){ return SHOWCAP.txt; }, flightDur:() => flight ? flight.dur : 0, hud:() => { roTimer = 0; updateHUD(0.2); }, get wallpaperFps(){ return wallpaperFps; }, setWallpaperFps, setFreeze,
   simulate:(sec) => { for (let k=0; k<sec*30; k++) tick(1/30); return { obj:tour.obj, view:tour.view, phase:tour.phase, lock:orbit.lock }; },
   view:(i, v) => { if (typeof i === 'string') i = BYKEY[i].index; const o = OBJ[i], vp = viewParams(o, v); flight = null; shipCam.on = false; tween = null; cam.focus = i; leash.x = leash.y = 0; orbit.lock = i; orbit.frame = camFrameOf(o); orbit.yaw = vp.yaw; orbit.pitch = vp.pitch; orbit.dist = orbit.distT = vp.dist; orbit.off = vp.off; orbit.offFn = vp.offFn; orbit.target = V.add(frel(o), vp.off); setInfo(i); applyOrbit(); tick(0); } };
 // (the atlas headings and chips, for tools/catalog.mjs, and the seed and the catalogue numbers the smoke test checks; a line of its own so it stays clear of edits to the hooks above)
 Object.assign(window.__cosmos.dbg, { GROUPS, CATS, catsOf, ATL, seedObjects:SEED_OBJECTS, catSplit });
-requestAnimationFrame(frame);
+queueNextFrame();
