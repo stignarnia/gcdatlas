@@ -10,6 +10,7 @@ Fly from a city street's worth of sky to the edge of the observable universe in 
 
 More light means a denser character. Colour comes from the physics: the temperature of a star, the glow of hot gas, the shift of light from things moving fast. Positions, distances and sizes are real; the look of each object is a physically based artist's rendering ([how accurate is it?](docs/ACCURACY.md)).
 
+
 No sign-up, nothing to install. It runs in any modern browser, on a desk or a phone.
 
 ## 127 places to visit (more to come...)
@@ -52,19 +53,25 @@ One thing here is invented: **the Halo**, a long-range cruiser with a captured s
 </tr>
 </table>
 
-- **The atlas.** Search or browse every place by distance, size or kind, and see which ones you have not visited yet.
-- **Earth's story.** 4.54 billion years on one slider: magma ocean, snowball Earth, the first forests, the asteroid, today.
-- **Scale ladder.** Drag one marker from the Moon to the observable universe; let go near a name to fly there.
-- **Flybys** past the giants (the Sun, UY Scuti, TON 618, the Milky Way) that show just how big they are.
-- **Time machine.** Run the Solar System forwards or back, or watch the constellations drift over 200,000 years.
-- **Live Earth.** Every active satellite at its real position, and the next rocket launches at their pads.
-- **Screensaver** (`Z`). Full screen, the interface fades, and an endless shuffled tour plays with the music.
-- **Photo mode** (`P`). Frame a shot, then save it as a picture or copy it as ASCII text.
-- **Today's discovery.** One object a day, the same for everyone, with a streak to keep.
-- **Collection log.** Ticks off what you have seen and hands out badges.
-- **Music.** gcd radio: 16 songs in six styles, from ambient and ambient piano to lofi and synthwave, made live in your browser. Pick a mood (mix, calm, beats, groove), skip a song or pick one from the list.
-- **Share.** A link takes a friend to your exact view, tour and date.
-- **Private.** Your settings, location and progress stay on your device.
+| | |
+| --- | --- |
+| **Atlas and search** | Type in the search box (or press `/`). Sort by distance, size or name, filter by kind (black holes, nebulae…), see what you have not visited yet, reset in one click. |
+| **Tours** | Guided tours with captions. The play / pause button at the top right stops the camera so you can look around, and brings it back. A green button beside the object's name says where it goes ("next stop · Moon", or "back to the tour" once you leave it), the tour's name opens the list of tours, and `[ ]` step between stops; while a tour plays the right-hand scale becomes the tour's track. Break away and *back to the tour* takes you back. Choose how long each stop lasts. |
+| **Flybys** | Sweeping camera moves past the giants (the Sun, UY Scuti, TON 618, the Milky Way…) that show their scale. |
+| **Scale ladder** | Drag the marker to zoom from the Moon to the observable universe; let go near a name to fly there. |
+| **Time machine** | Run the Solar System clock forwards or back, jump years, or drag deep time to watch the constellations change over ±200,000 years. |
+| **Tonight** | *Your sky*: stand at your location and look up at the real sky. What is up tonight: Moon phase, bright planets, ISS passes, launches, meteor showers, eclipses. |
+| **Earth's story** | 4.54 billion years on one slider: magma ocean, snowball Earth, the first forests, the asteroid, the first humans, today. |
+| **Live Earth** | Every active satellite from CelesTrak's tracking data, the ISS and Hubble at their real positions, the next rocket launches at their pads, air traffic on real routes (simulated). |
+| **Screensaver** | Full screen, the interface fades, an endless shuffled tour plays with the music (`Z`). Can start by itself after a few idle minutes. |
+| **KDE Plasma wallpaper** | Run gcdatlas as a live desktop wallpaper on Linux (see [docs/WALLPAPER.md](docs/WALLPAPER.md)). |
+| **Photo mode** | Frame a shot, save it as a picture or copy it as ASCII text (`P`). |
+| **Today's discovery** | One object a day, the same for everyone, with a streak. |
+| **Collection log** | Ticks off what you have seen, with badges. Stored only on your device. |
+| **Music** | gcd radio: a generative mix of lofi, chill house and ambient, synthesised live so it never loops. Pick a style or skip a track. |
+| **Share** | Links reproduce your exact view, tour and date. |
+| **Calm interface** | Fades after a few quiet seconds (sooner on tours) and comes back with any touch. The info panel can be full, compact or hidden (`I`). |
+| **Phones** | A thumb-sized dock, the details as a card you can expand, shrink or swipe away, the scale ladder behind a chip, and the camera frames the object in the space left free. Works upright and on its side. |
 
 ## On your phone
 
