@@ -41,6 +41,9 @@ npm run shots -- sun:0,crab:1  # screenshots into tests/out/ (+ a contact sheet)
 npm run lab -- --do=cam:chase+act:fold --at=3,7,9.5   # stills of the Halo lab (/lab) on the GPU (+ a contact sheet)
 npm run catalog                # regenerate docs/CATALOG.md from the built page
 npx vercel dev                 # local server with the /api functions
+npm run wallpaper              # package KDE Plasma 6 wallpaper archive
+npm run wallpaper:install      # package and install/update KDE wallpaper locally
+npm run test:wallpaper         # run wallpaper mode Playwright test
 ```
 
 Tests need `npm install` once (dev dependencies: playwright, sharp). Headless Chromium runs WebGL through SwiftShader, which is slow: simulations run at a lower frame rate in tests, so use `__cosmos.simulate(seconds)` or step `o.update()` for deterministic checks.
@@ -105,3 +108,4 @@ Tests need `npm install` once (dev dependencies: playwright, sharp). Headless Ch
 - A planet made by `exoPlanet` keeps an equatorial `R0`, so `sunSide`'s 'horizontal' is not its orbit plane; and a fast orbit (`P` of a few seconds) carries a `dirFn` view away from its phase within a hold. The 0.9.0 planets set `R0` to their star's and use `track` views (`exoViews` in `src/objects/p7-places.js`). A test that calls `__cosmos.view` does not run `track`; turn the camera yourself.
 - Object files draw from one seeded `rnd()`, so a new pack that uses it changes the random numbers of everything made after it, the Halo's route included. `p7-places.js` saves `seed` and puts it back at its end; do the same in a new pack.
 - In `?wallpaper=1` the saver is embedded: input is swallowed (`stopImmediatePropagation`), not ignored; anything new that can appear on screen must hide under `body.wallpaper`.
+- In `?wallpaper=1` the saver is embedded: input is swallowed (`stopImmediatePropagation`), not ignored; anything new that can appear on screen must hide under `body.wallpaper`. Dynamic FPS pacing throttles loop scheduling via `queueNextFrame`; DPR is clamped to 1x; off-screen DOM updates return early; `window.setFreeze` / `window.__freeze` halts rendering.
