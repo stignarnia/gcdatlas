@@ -112,6 +112,46 @@ These are plans and ideas, not promises. They will land one at a time.
 | Z · P · B | screensaver · photo mode · your sky |
 | H · ? | home · help |
 
+## Build and run
+
+```sh
+node build.mjs          # writes dist/index.html (no dependencies, Node 18+)
+npx serve dist          # or open dist/index.html directly (live data needs the /api functions, see below)
+npx vercel dev          # the site plus the /api functions, as in production
+```
+
+Vercel runs the same build (see `vercel.json`); every push to `main` redeploys the site, and every pull request gets its own preview URL.
+
+Tests (Playwright, headless Chromium):
+
+```sh
+npm install             # dev dependencies only: playwright, sharp
+npm test                # smoke test: loads, renders every object, no errors
+npm run test:tour       # plays the grand tour for 1,000 simulated seconds
+npm run shots -- sun:0,ton618:1     # screenshots of any objects / angles into tests/out/
+npm run catalog         # regenerates docs/CATALOG.md, the list of everything implemented
+```
+
+## Where things are
+
+| Path | Role |
+| --- | --- |
+| `src/00-head.html`, `src/01-body.html` | styles and interface markup |
+| `src/02-core.js` … `src/04-world.js` | WebGL helpers, shared shader code and the ASCII pipeline, units, ephemerides, settings, feature flags, the object registry |
+| `src/05-data.js` | generated star catalogue and textures (`tools/`) |
+| `src/06*.js`, `src/o*.js` | the sky, galaxies, the cosmic web, and the built-in objects (one family per file) |
+| `src/objects/` | content packs and add-ons (nebulae, galaxies, extreme stars, the black hole zoo, flybys, live Earth) |
+| `src/07*.js` | the Halo, transient events, music |
+| `src/08*.js` | camera, flights, tours, input |
+| `src/09*.js` | rendering, interface, atlas, features (screensaver, photo, collection, tonight, Earth's story) |
+| `api/` | serverless functions: `/api/sats` (CelesTrak), `/api/launches` (Launch Library 2) |
+| `tests/`, `tools/` | test harness, catalogue and data generators |
+| `docs/` | architecture, accuracy, workflow, testing, security, roadmap, changelog, content catalogue |
+| `kde-wallpaper/` | KDE Plasma 6 live wallpaper plugin sources and packager |
+| `.github/` | CI workflow for testing, packaging and releases |
+
+Start with [CLAUDE.md](CLAUDE.md) (working conventions) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 ## Data and credits
 
 - Star positions and parallaxes: Hipparcos, via [star-catalog-lite](https://www.npmjs.com/package/star-catalog-lite); colours, constellation lines and the Milky Way outline: [d3-celestial](https://github.com/ofrohn/d3-celestial) by Olaf Frohn
