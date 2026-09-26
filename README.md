@@ -1,6 +1,6 @@
 # gcdatlas
 
-An explorable atlas of the real universe, drawn entirely in ASCII characters.
+**The real universe, drawn entirely in ASCII.** Live at **https://gcdatlas.com**
 
 Live at [gcdatlas.com](https://gcdatlas.com).
 
@@ -111,6 +111,7 @@ These are plans and ideas, not promises. They will land one at a time.
 | G · L · M | glow · labels · music |
 | Z · P · B | screensaver · photo mode · your sky |
 | H · ? | home · help |
+| C | ride along with the Halo (chase / cockpit) |
 
 ## Build and run
 

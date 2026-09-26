@@ -145,6 +145,7 @@ All notable changes, newest first. Dates are UTC.
 - At the end of a light-speed leg across the Milky Way the ship moved in jerks, with pauses between, because the distance still to go was rounded over the whole length of the leg. It is now measured from where the ship arrives, and the ship comes in smoothly.
 - The ship never turns faster than its tightest turn, three times its usual rate. The motion test checks this on a whole route and on each of the hops above.
 **New**
+- The site's primary public address is now gcdatlas.com (canonical link, Open Graph metadata, photo watermarks, and upstream User-Agent headers).
 - KDE Plasma 6 live wallpaper: gcdatlas can run directly as an animated desktop wallpaper on Linux (see docs/WALLPAPER.md). Packaged via `npm run wallpaper` as a KDE wallpaper plugin (`app.gcdatlas.wallpaper`) with configurable travel speed, frame rate limit, and automatic power saving.
 - Wallpaper mode (`?wallpaper=1`): an embedded screensaver tour across all catalog objects with no HUD, sound, or network requests, and input swallowed so desktop clicks do not affect the camera.
 - Wallpaper optimizations: dynamic frame rate pacing (15, 30, 60 FPS) combining `setTimeout` with `requestAnimationFrame`, 1x DPR canvas clamp on HiDPI displays to eliminate fill rate overhead, skipping off-screen DOM updates, and complete freezing via QtWebEngine `LifecycleState.Frozen` when covered by maximized or fullscreen windows.
