@@ -8,7 +8,7 @@ State on 2026-09-26: **v0.8.2** (the Halo's new look, after the owner's concept 
 
 ## What this is
 
-gcdatlas (https://gcdatlas.vercel.app, repo `eshin087/gcdatlas`) is a single-page WebGL2 atlas of the universe rendered entirely as ASCII characters. Real positions, distances and sizes; physically based, artistic rendering. It is meant to be a long-term project that keeps growing (more objects, an ASCII Earth, social features later) without breaking what exists.
+gcdatlas (https://gcdatlas.com, repo `eshin087/gcdatlas`) is a single-page WebGL2 atlas of the universe rendered entirely as ASCII characters. Real positions, distances and sizes; physically based, artistic rendering. It is meant to be a long-term project that keeps growing (more objects, an ASCII Earth, social features later) without breaking what exists.
 
 ## Golden rules
 
