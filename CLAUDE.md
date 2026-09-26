@@ -73,3 +73,4 @@ Tests need `npm install` once (dev dependencies: playwright, sharp). Headless Ch
 - Picked objects play their views in a loop (`show` in `08-camera.js`); give every object views that work one after another, not only as tour stops.
 - The artifact build (`dist/artifact.html`) runs without `/api`, so live features must degrade gracefully.
 - Phones get their own layout (dock, info card, scale chip; `src/09h-ui.js`). The breakpoint is `COMPACT_MQ` in `src/04-world.js` and the matching `@media` blocks at the end of `00-head.html`; change both together. Anything new that sits at the bottom of the screen on a phone should stack above `var(--dock-h)` + `var(--sheet-h)`, and anything that should fade when idle goes in the `body.ui-idle` rule.
+- In `?wallpaper=1` the saver is embedded: input is swallowed (`stopImmediatePropagation`), not ignored; anything new that can appear on screen must hide under `body.wallpaper`.
