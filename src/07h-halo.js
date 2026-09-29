@@ -9,9 +9,11 @@
 // in a row: a sensor scan, an outing by Pip, its drone, a weapons test, a skim through a gas giant or a star. Its last pass bends toward the next
 // stop, and it goes. It never stops and never turns on the spot.
 // Precision: at the scale of a galaxy a float64 offset from the target is only good to ~100 km, so anything that must sit near the 2.5 km
-// ship (beams leaving it, the probe at launch and docking, the rock, sparks) is kept relative to the ship; things near the target (hits,
-// explosions) relative to the target.
-const HALO = { LS_NEAR:100, LS_FAR:3e4, LS_P:0.35, MAXBEND:1.4, TURN:0.35, T_FAST:10, FOLD_SPOOL:2.8, LS_SPOOL:1.7, FOLD_T:0.4, EMERGE:0.5 };
+// ship (beams leaving it, Pip, sparks) is kept relative to the ship; things near the target (hits, explosions) relative to the target.
+// (T_ROAM: a pass's cruising time, drawn for each; LOOP_OM: the loops turn at this share of the usual rate; FOLD_SPOOL: from the drive spooling
+// up to the jump, the fold's wind-up)
+const HALO = { LS_NEAR:100, LS_FAR:3e4, LS_P:0.5, MAXBEND:1.4, TURN:0.35, T_FAST:10, FOLD_SPOOL:9, LS_SPOOL:1.7, FOLD_T:0.4, EMERGE:0.5,
+  STAY:[100, 140], T_ROAM:[15, 22], LOOP_OM:0.9 };
 // per job: how long it lasts (s), how much the ship slows for it, where on the pass it happens (share of the path); and the framing while it
 // works: how much of it applies (view), how far the ship banks (bank), how far the trailing camera turns toward the body (turn), and where
 // the lock-on and chase cameras aim (aim, chaseAim: ship axes in ship radii, x below the belly, y ahead, z to the side it banks toward)
