@@ -79,9 +79,7 @@ if (t0 === t1) bad.push('the tour did not move on to another stop');
 if (requests.length) bad.push('network requests in wallpaper mode: ' + requests.slice(0, 5).join(', '));
 
 // saved settings are ignored and left alone: a visitor's warp and sound stay theirs
-const { browser: b2, page: p2 } = await openPage({ query:'?wallpaper=1', fade:true });
-await p2.evaluate(() => { try { localStorage.setItem('gcdatlas.settings', JSON.stringify({ travel:'warp', sound:true, fadeUI:'off' })); } catch (e) {} });
-await p2.goto(PAGE + '?wallpaper=1');
+const { browser: b2, page: p2 } = await openPage({ query:'?wallpaper=1', fade:true, settings:{ travel:'warp', sound:true, fadeUI:'off' } });
 await p2.waitForFunction(() => window.__cosmos && window.__cosmos.saver && window.__cosmos.saver.on, null, { timeout:30000 });
 const saved = await p2.evaluate(() => {
   const c = window.__cosmos;
