@@ -2,6 +2,11 @@
 // ================================================================ camera: focus-relative, orbiting in the locked object's frame, zoom-pan flights
 const cam = { focus:0, rel:[0,0,1], fwd:[0,0,-1], right:[1,0,0], up:[0,1,0], fovY:55*DEG };
 const orbit = { yaw:0, pitch:0.1, dist:1, distT:1, lock:0, off:[0,0,0], offFn:null, target:[0,0,0], frame:M3.I() };
+// the distance a place's looks go by (what shows at which zoom: a nebula fading round the star inside it, orbit lines, the Crab round its
+// pulsar, a readout's close-up line): the camera's distance to what it is locked on; with the Halo, to the place the ship is visiting.
+// (Riding along, the lock is the ship a few hundred km away, and every such look took its closest form: the Crab Nebula faded to 4% and
+// Saturn's readout said the camera was inside its rings. Owner, 0.9.12: the place must show on the Halo tour)
+function viewDist(){ return orbit.lock >= 0 && OBJ[orbit.lock] === ship && ship.parent ? ship.parent.dist : orbit.dist; }
 let flight = null, tween = null;
 const tour = { on:true, obj:0, view:0, to:null, phase:'hold', t:0 };   // (to: the angle a swing is heading for)
 const keys = new Set();
@@ -24,7 +29,10 @@ function setBasis(fwd, up){
   let r = V.cross(cam.fwd, up);
   if (V.len(r) < 1e-6) r = V.cross(cam.fwd, V.norm([up[1], up[2], up[0]]));
   cam.right = V.norm(r); cam.up = V.cross(cam.right, cam.fwd);
-  let shX = viewShift.x, shY = viewShift.y;
+  // (viewShift is for the view without a long lens: through one, the same shift in pixels is a smaller turn. Worked out for the lens of the
+  // moment and eased, it lagged the Halo tour's zoom, and at 40 times it put Alpha Centauri off a phone's screen: 0.9.12)
+  const lk = LENS.k || 1;
+  let shX = Math.atan(Math.tan(viewShift.x)/lk), shY = Math.atan(Math.tan(viewShift.y)/lk);
   if ((leash.x || leash.y) && !SKYV.on){
     // after the turn below the target sits at X = tan(shX)/cos(shY), Y = tan(shY) on screen (in units of tanX, tanY per half screen):
     // move it by the leash's pixels exactly
@@ -80,11 +88,14 @@ function trackYP(o, v){ const d = M3.applyT(o.R0, V.norm(v.track())); return [Ma
 // van Wijk & Nuij optimal zoom-and-pan path (numerically stable forms)
 function vwPath(u1, w0, w1, rho){
   // (peak: where along the path the view is widest; w rises to it and falls after it)
-  if (u1 < 1e-7*Math.min(w0, w1)){ const k = Math.log(w1/w0); return { S:Math.abs(k)/rho + 1e-6, u:() => 0, w:s => w0*Math.exp(Math.sign(k)*rho*s), peak:k > 0 ? Infinity : -Infinity }; }
+  // (rem: the distance still to go, u1 - u(s), worked out without that subtraction: near the end of a trip of millions of light-years it is
+  // a few kilometres, far below what the difference of two such numbers can hold)
+  if (u1 < 1e-7*Math.min(w0, w1)){ const k = Math.log(w1/w0); return { S:Math.abs(k)/rho + 1e-6, u:() => 0, rem:() => u1, w:s => w0*Math.exp(Math.sign(k)*rho*s), peak:k > 0 ? Infinity : -Infinity }; }
   const r4 = rho*rho*rho*rho;
   const b0 = (w1*w1 - w0*w0 + r4*u1*u1)/(2*w0*rho*rho*u1), b1 = (w1*w1 - w0*w0 - r4*u1*u1)/(2*w1*rho*rho*u1);
-  const r0 = -Math.asinh(b0), r1 = -Math.asinh(b1);
-  return { S:(r1 - r0)/rho, u:s => w0*Math.sinh(rho*s)/(rho*rho*Math.cosh(rho*s + r0)), w:s => w0*Math.cosh(r0)/Math.cosh(rho*s + r0), peak:-r0/rho };
+  const r0 = -Math.asinh(b0), r1 = -Math.asinh(b1), S = (r1 - r0)/rho, c0 = w0*Math.cosh(r0)/(rho*rho);
+  return { S, u:s => w0*Math.sinh(rho*s)/(rho*rho*Math.cosh(rho*s + r0)), rem:s => c0*Math.sinh(rho*(S - s))/(Math.cosh(r1)*Math.cosh(rho*s + r0)),
+    w:s => w0*Math.cosh(r0)/Math.cosh(rho*s + r0), peak:-r0/rho };
 }
 // the widest view on a trip's path, among 25 evenly spaced points (as isScenic has always measured it). The view widens up to the peak and
 // narrows after it, so the widest of those points is one of the two around the peak: two evaluations instead of 25.
@@ -142,13 +153,15 @@ function startFlight(o, vp, onDone, via, glide){
   const durs = { cinematic:clamp(1.6 + path.S*0.42, 2.4, 13) + (scenic ? 3 : 0), quick:clamp(1.3 + path.S*0.2, 1.8, 6.5) + (scenic ? 1.4 : 0), warp:clamp(0.85 + path.S*0.03, 0.95, 1.6) };
   if (pass) for (const k in durs) if (k !== 'warp') durs[k] += 1.2;
   if (glide) for (const k in durs) if (k !== 'warp') durs[k] += 2.5;
-  const dur = durs[SET.travel] || durs.quick;
+  // (vp.minDur: a flight that shows something on the way takes at least that long, except at warp: the descent onto a launch pad)
+  const dur = Math.max(durs[SET.travel] || durs.quick, SET.travel === 'warp' ? 0 : (vp.minDur || 0)*(SET.travel === 'quick' ? 0.65 : 1));
   shipCam.on = shipCam.pending = false;   // any flight takes the camera off the ship (riding along starts again when its own flight lands)
+  if (LCAM.on) stopLaunchCam(true, true);   // (and off a launch it was following)
   // start compiling the destination's shaders now, so it is ready to draw on arrival
   if (o.prog) progReady(o.prog); for (const sp of o.particles || []) if (P[sp.prog]) progReady(P[sp.prog]);
   music.whoosh(dur);
   flight = { t:0, dur, durs, path, A, B, L0:V.len(V.sub(B, A)), dir0:V.norm(V.sub(cam.rel, A)), dir1:dirEnd, prog,
-    up0:cam.up.slice(), up1:vp.up || M3.apply(camFrameOf(o), [0,1,0]), obj:o, vp, onDone, switched:false, spin:scenic || pass ? 0 : (rnd() < 0.5 ? -1 : 1)*0.5, scenic, dirMid, upMid,
+    up0:cam.up.slice(), up1:vp.up || M3.apply(camFrameOf(o), [0,1,0]), obj:o, vp, onDone, switched:false, spin:scenic || pass || vp.dirAt ? 0 : (rnd() < 0.5 ? -1 : 1)*0.5, scenic, dirMid, upMid,
     pass, via:pass ? via.o : null };
   tween = null;
 }
@@ -248,22 +261,31 @@ function updateFlight(dt){
   const f = flight; f.t += dt;
   const x = clamp(f.t/f.dur, 0, 1);
   const e = flightE(f.prog, x), s = f.path.S*e;
+  // (the share of the trip still to go, by distance, as the path measures it: exact however long the trip)
+  const g = f.L0 > 0 ? clamp(f.path.rem(s)/f.L0, 0, 1) : 0, w = x >= 1 ? f.vp.dist : f.path.w(s);
+  // positions switch to being relative to the destination halfway by time, or sooner, halfway by distance, when the place it set off from
+  // is too far away to put the destination within a thousandth of the view's width (a float64 holds about 16 digits: from the observable
+  // universe that is thousands of kilometres, and the 2.5 km Halo was lost off the screen until the last frame, 0.9.6)
+  if (!f.switched){
+    const D = x > 0.5 || g < 0.5 ? frel(f.obj) : null;
+    if (D && (x > 0.5 || V.len(D)*2.3e-16 > 1e-3*w)){ f.A = V.sub(f.A, D); cam.focus = f.obj.index; f.switched = true; }
+  }
   // aim at where the destination is now, not where it was at take-off: planets and moons keep moving during the flight,
   // and aiming at a stale point meant closing in on empty space and then jumping to the real object in the last frame
   const Bnow = V.add(frel(f.obj), f.vp.offFn ? f.vp.offFn() : (f.vp.off || [0, 0, 0]));
-  const tgt = V.add(f.A, V.mul(V.sub(Bnow, f.A), f.L0 > 0 ? clamp(f.path.u(s)/f.L0, 0, 1) : 1));
+  // (measured from the nearer end: from where it set off in the first half of the way, back from the destination in the second, so rounding
+  // never moves it by more than a sliver of what is left to go)
+  const dAB = V.sub(Bnow, f.A); let tgt = g > 0.5 ? V.add(f.A, V.mul(dAB, 1 - g)) : V.sub(Bnow, V.mul(dAB, g));
+  // (a destination can bend the way the aim travels: vp.tgtAt, round the Earth instead of through it, s4-spacex-run.js)
+  if (f.vp.tgtAt) tgt = f.vp.tgtAt(tgt, f.A, Bnow, g, w, x);
   if (f.pass){ const b = passBump(f.pass, e); tgt[0] += f.pass.bend[0]*b; tgt[1] += f.pass.bend[1]*b; tgt[2] += f.pass.bend[2]*b; }
-  const w = x >= 1 ? f.vp.dist : f.path.w(s);
   // flying up to the Halo: it turns as it goes, so the final framing follows its frame (no swing on landing)
   if (f.obj.camFrame){ f.dir1 = M3.apply(camFrameOf(f.obj), sphL(f.vp.yaw, f.vp.pitch)); f.up1 = f.vp.upFn ? f.vp.upFn() : M3.apply(camFrameOf(f.obj), [0, 1, 0]); }
   // flying to an angle that follows something moving (a planet's day side as it circles its star): the landing direction follows it too
   if (f.vp.track){ [f.vp.yaw, f.vp.pitch] = f.vp.track(); f.dir1 = M3.apply(camFrameOf(f.obj), sphL(f.vp.yaw, f.vp.pitch)); }
-  if (!f.switched && x > 0.5){
-    const D = frel(f.obj);
-    f.A = V.sub(f.A, D); tgt[0] -= D[0]; tgt[1] -= D[1]; tgt[2] -= D[2];
-    cam.focus = f.obj.index; f.switched = true;
-  }
-  const [dir, up] = flightDir(f, x);
+  let [dir, up] = flightDir(f, x);
+  // (a destination can steer the camera itself: vp.dirAt, the rockets' approach, which comes down over the pad from above: s4-spacex-run.js)
+  if (f.vp.dirAt) [dir, up] = f.vp.dirAt(x, w, dir, up, tgt, f);
   orbit.target = tgt; orbit.dist = orbit.distT = w;
   cam.rel = V.add(tgt, V.mul(dir, w));
   setBasis(V.mul(dir, -1), up);
@@ -374,12 +396,18 @@ function shipPose(mode){
   const q = SHIP_POSE[mode], R = ship.R0, r = ship.rad;
   if (mode === 'turn'){ const T = shipCam.turn, eye = V.mul(M3.apply(R, T.eye), r), look = V.mul(M3.apply(R, T.look || [0, 0, 0]), r);
     return { eye, look, fwd:V.norm(V.sub(look, eye)), up:M3.apply(R, T.up || [-1, 0, 0]) }; }
-  // (ship.S.fz: closer in while the ship folds, and aimed a little more at the ship, so the break-up fills more of the screen; 07h-halo.js)
-  if (mode === 'chase'){ const Rv = ship.viewR || R, o = ship.chaseOff || [0, 0, 0], fz = ship.S.fz || 1;
-    const eye = V.mul(M3.apply(Rv, V.mul(q.eye, shipCam.zoom*fz)), r), look = V.mul(M3.apply(Rv, V.add(V.mul(q.look, fz*fz), o)), r);
-    return { eye, look, fwd:V.norm(V.sub(look, eye)), up:M3.apply(Rv, [-1, 0, 0]) }; }
+  // (riding along, 0.9.6: the camera shows the ship with the place it visits behind it, and moves between shots: ridePose in 08r-ride.js,
+  // which blends into chasePose between places)
+  if (mode === 'chase') return ridePose();
   const Rg = ship.gazeR || R, eye = V.mul(M3.apply(R, q.eye), r), look = V.add(eye, V.mul(M3.apply(Rg, V.sub(q.look, q.eye)), r));
   return { eye, look, fwd:V.norm(V.sub(look, eye)), up:M3.apply(Rg, [-1, 0, 0]) };
+}
+// the chase pose: low behind the ship, looking along its heading (riding along between places, and in the lab)
+// (ship.S.fz: closer in while the ship folds, and aimed a little more at the ship, so the break-up fills more of the screen; 07h-halo.js)
+function chasePose(){
+  const q = SHIP_POSE.chase, R = ship.R0, r = ship.rad, Rv = ship.viewR || R, o = ship.chaseOff || [0, 0, 0], fz = ship.S.fz || 1;
+  const eye = V.mul(M3.apply(Rv, V.mul(q.eye, shipCam.zoom*fz)), r), look = V.mul(M3.apply(Rv, V.add(V.mul(q.look, fz*fz), o)), r);
+  return { eye, look, fwd:V.norm(V.sub(look, eye)), up:M3.apply(Rv, [-1, 0, 0]) };
 }
 function shipCamSnap(p){ shipCam.eye = p.eye; shipCam.fwd = p.fwd; shipCam.up = p.up; }
 function startShipCam(mode){
@@ -388,10 +416,12 @@ function startShipCam(mode){
   shipCam.mode = mode || shipCam.mode; motion.last = 'ship';
   setInfo(ship.index);
   const near = cam.focus === ship.index && orbit.lock === ship.index && V.len(cam.rel) < ship.rad*30 && !flight;
+  rideStart();   // (the first shot, so the flight up to the ship lands on it)
   if (near){ shipCam.on = true; shipCam.eye = cam.rel.slice(); shipCam.fwd = cam.fwd.slice(); shipCam.up = cam.up.slice(); updateModeUI(); return; }
-  // fly in first, landing exactly on the chase pose, then take over (the ship keeps moving and turning: the flight follows its pose as it goes)
-  const p = shipPose('chase'), dl = M3.applyT(camFrameOf(ship), V.norm(V.sub(p.eye, p.look)));
-  const vp = { yaw:Math.atan2(dl[0], dl[2]), pitch:Math.asin(clamp(dl[1], -0.999, 0.999)), dist:V.len(V.sub(p.eye, p.look)), off:p.look, offFn:() => shipPose('chase').look, up:p.up, upFn:() => shipPose('chase').up };
+  // fly in first, landing exactly on the ride pose, then take over (the ship keeps moving and turning: the flight follows its pose as it goes,
+  // the place it visits turning round it too: rideFrame, and the landing direction by track)
+  const p = shipPose('chase'), yp = q => { const d = M3.applyT(camFrameOf(ship), V.norm(V.sub(q.eye, q.look))); return [Math.atan2(d[0], d[2]), Math.asin(clamp(d[1], -0.999, 0.999))]; }, [y0, p0] = yp(p);
+  const vp = { yaw:y0, pitch:p0, dist:V.len(V.sub(p.eye, p.look)), off:p.look, offFn:() => { rideFrame(0); return shipPose('chase').look; }, up:p.up, upFn:() => shipPose('chase').up, track:() => yp(shipPose('chase')) };
   startFlight(ship, vp, () => { shipCam.on = true; shipCam.pending = false; shipCamSnap(shipPose('chase')); updateShipCam(0); updateModeUI(); }, null, true);
   shipCam.pending = true;
   updateModeUI();
@@ -404,10 +434,15 @@ function stopShipCam(){
   syncOrbitFromCam(); updateModeUI();
   return true;
 }
-function setShipCamMode(m){ shipCam.mode = m; if (!shipCam.on) startShipCam(m); updateModeUI(); toast(m === 'cockpit' ? 'cockpit view · on the bridge of the Halo' : 'chase view · behind the Halo'); }
+function setShipCamMode(m){ shipCam.mode = m; if (!shipCam.on) startShipCam(m); updateModeUI(); toast(m === 'cockpit' ? 'cockpit view · on the bridge of the Halo' : rideStill() ? 'outside view · the Halo with the place it visits behind it' : 'outside view · the camera moves round the Halo and the place it visits'); }
 function updateShipCam(dt){
   if (cam.focus !== ship.index){ const D = frel(ship); cam.rel = V.sub(cam.rel, D); cam.focus = ship.index; if (shipCam.eye) shipCam.eye = cam.rel.slice(); }
-  const p = shipPose(shipCam.mode), k = dt > 0 ? 1 - Math.exp(-dt*SHIP_POSE[shipCam.mode].lag) : 1;
+  if (shipCam.mode === 'chase') rideStep(dt);
+  // (the lag in step with the Halo tour's lens: through a long lens the same lag moves the picture as many times further, and at 40 times
+  // it lost Alpha Centauri from a view a degree and a half high. The tour's own shots are smooth already, every change eased or on a
+  // spring, and follow closely: on a low pass the view swings fast, and a quarter of a second behind, the horizon fell out of the picture)
+  const ride = shipCam.mode === 'chase', lag = SHIP_POSE[shipCam.mode].lag*(ride ? Math.max(RIDE.fam === 'tour' ? 4 : 1, Math.exp(RIDE.lk)) : 1);
+  const p = shipPose(shipCam.mode), k = dt > 0 ? 1 - Math.exp(-dt*lag) : 1;
   if (!shipCam.eye) shipCamSnap(p);
   shipCam.eye = V.lerp(shipCam.eye, p.eye, k); shipCam.fwd = V.norm(V.lerp(shipCam.fwd, p.fwd, k)); shipCam.up = V.norm(V.lerp(shipCam.up, p.up, k));
   cam.rel = shipCam.eye.slice(); setBasis(shipCam.fwd, shipCam.up);
@@ -463,10 +498,12 @@ function resumeShow(){
   updateModeUI();
 }
 function pauseShow(){ if (show.on || show.pending){ show.on = show.pending = false; motion.last = 'show'; if (show.phase === 'swing') tween = null; } }
-const isPlaying = () => tour.on || show.on || show.pending || !!flyMove || shipCam.on || (!!flight && !!shipCam.pending && flight.obj === ship);
+const isPlaying = () => tour.on || show.on || show.pending || !!flyMove || shipCam.on || (!!flight && !!shipCam.pending && flight.obj === ship) || LCAM.on || (!!flight && !!SX.pend);
 // the play / pause control (and the space bar): pause whatever moves the camera; play brings back the last thing that did
 function togglePlay(){
   if (tour.on){ stopTour(false); motion.last = 'tour'; toast('paused · press play (or space) to carry on with the tour'); }
+  else if (LCAM.on){ stopLaunchCam(); toast('paused · the camera is yours · press play to follow the flight again'); }
+  else if (motion.last === 'launch' && sxResume()){}
   else if (shipCam.on){ stopShipCam(); toast('paused · press play to ride along with the Halo again'); }
   else if (motion.last === 'ship' && typeof ship !== 'undefined' && orbit.lock === ship.index){ startShipCam(); }
   else if (show.on || show.pending || flyMove){ pauseShow(); flyMove = null; tween = null; toast('paused · the camera is yours · press play to carry on'); }
@@ -537,6 +574,9 @@ function syncOrbitFromCam(){
   const n = M3.applyT(orbit.frame, V.norm(d)); orbit.yaw = Math.atan2(n[0], n[2]); orbit.pitch = Math.asin(clamp(n[1], -0.999, 0.999));
 }
 function lockOn(i, viewIdx = 0, loop = true){
+  // (on the Halo tour a click on the ship rides along again, with the tour's shots, rather than the ship's own angles, which trail it and
+  // leave the place behind the camera: owner, 0.9.12)
+  if (HT.on && typeof ship !== 'undefined' && i === ship.index){ if (!shipCam.on && !shipCam.pending) startShipCam('chase'); return; }
   stopTour(false); orbit.offFn = null; show.on = false;
   const o = OBJ[i], vi = Math.min(viewIdx, o.views.length - 1);
   const vp = viewParams(o, vi);
@@ -557,7 +597,10 @@ canvas.addEventListener('contextmenu', e => e.preventDefault());
 canvas.addEventListener('pointerdown', e => {
   canvas.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
-  if (pointers.size === 1) drag = { x0:e.clientX, y0:e.clientY, t0:performance.now(), moved:0, pan:e.button === 2 || e.shiftKey };
+  // (on a rocket or its pad a right-drag turns round it like a left drag: a pan let go of it, and the free camera, which moves with the
+  // rocket, slid the rocket across the screen as if you were dragging it: owner, 0.10.1)
+  const lk = OBJ[orbit.lock], onRocket = LCAM.on || !!(lk && (lk.sx || lk.sxSite));
+  if (pointers.size === 1) drag = { x0:e.clientX, y0:e.clientY, t0:performance.now(), moved:0, pan:(e.button === 2 || e.shiftKey) && !onRocket };
   else if (drag){ drag.moved = 99; drag.two = null; }   // (a new two-finger gesture starts from here)
   canvas.classList.add('dragging');
 });
@@ -605,7 +648,7 @@ function clampLeash(){
   const A = leash.avoid; if (!A) return;
   // where the object rests (the middle of the free space) and where the leash puts it; a centre that would sit on the card goes over its nearer free edge
   const X0 = Math.tan(viewShift.x)/Math.cos(viewShift.y), Y0 = Math.tan(viewShift.y);
-  const rx = viewWcss/2*(1 + X0/tanX), ry = canvasHcss - viewHcss/2*(1 + Y0/tanY), px = rx + leash.x, py = ry + leash.y;
+  const rx = viewWcss/2*(1 + X0/tanX0), ry = canvasHcss - viewHcss/2*(1 + Y0/tanY0), px = rx + leash.x, py = ry + leash.y;
   if (px <= A.left || px >= A.right || py <= A.top || py >= A.bottom) return;
   const toTop = A.top - ry, toRight = A.right - rx, okTop = toTop >= -leash.by, okRight = toRight <= leash.bx;
   if (okTop && (!okRight || py - A.top <= A.right - px)) leash.y = toTop; else if (okRight) leash.x = toRight;
@@ -643,6 +686,8 @@ for (const el of [canvas, $('#labels'), $('#shipMark')]) el.addEventListener('wh
 function beginManual(){
   manualAt = performance.now();
   if (stopShipCam()) toast('the camera is yours · press play to ride along with the Halo again');
+  if (stopLaunchCam()){ LCAM.took = true; toast('the camera is yours · it follows the flight again 10 s after you let go, or press play'); }
+  SX.pend = null;
   shipCam.pending = false;
   if (tour.on){ stopTour(true); motion.last = 'tour'; }
   if (show.on || show.pending){ pauseShow(); updateModeUI(); }
@@ -681,10 +726,11 @@ addEventListener('keydown', e => {
   if (e.target.closest && ((e.target.closest('input') && e.key !== 'Escape') || (e.target.closest('button') && (e.key === ' ' || e.key === 'Enter')))) return;
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   const k = e.key.toLowerCase();
-  if (!$('#help').hidden){ if (k === 'escape' || k === '?') toggleHelp(false); return; }
+  if (modalOpen()){ if (k === 'escape' || k === '?') closeModals(); return; }   // (help or what's new)
   if (k === 'escape'){ if (!closeOpen()) unlock(); return; }   // (an open panel closes first; with nothing open the camera lets go)
   if (k === ' '){ e.preventDefault(); togglePlay(); return; }
   if (k === '/' || k === 'o'){ e.preventDefault(); focusSearch(); return; }
+  if (k === 'k' && typeof ship !== 'undefined'){ setOpt('rideCam', SET.rideCam === 'still' ? 'moving' : 'still'); return; }   // (riding along: the camera moves, or holds one angle)
   if (k === 'c' && typeof ship !== 'undefined'){ setShipCamMode(shipCam.on && shipCam.mode === 'chase' ? 'cockpit' : 'chase'); return; }
   if (k === 'y'){ setOpt('travel', cycle(['quick', 'warp', 'cinematic'], SET.travel)); return; }
   if (k === 'm'){ toggleSound(); return; }
@@ -692,7 +738,7 @@ addEventListener('keydown', e => {
   if (k === '+' || k === '='){ beginManual(); zoomBy(0.6); return; }
   if (k === '-' || k === '_'){ beginManual(); zoomBy(1.7); return; }
   if (k === 't'){ setOpt('time', cycle([1, 3, 10, 0, 0.25], timeScale)); return; }
-  if (k === 'v'){ setOpt('detail', (detailIdx + 1) % DETAIL.length); return; }
+  if (k === 'v'){ setOpt('detail', SET.detailAuto ? 0 : detailIdx >= DETAIL.length - 1 ? 'auto' : detailIdx + 1); return; }   // (auto, ultra, fine, normal, bold, auto…)
   if (k === 'g'){ setOpt('glow', !SET.glow); return; }
   if (k === 'l'){ setOpt('labels', !SET.labels); return; }
   if (k === 'h' || k === 'home'){ e.preventDefault(); goHome(); return; }

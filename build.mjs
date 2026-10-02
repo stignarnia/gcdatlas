@@ -26,8 +26,32 @@ list.sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
 const js = list.map(f => `\n// ---- ${f}\n` + read(f)).join('');
 try { new vm.Script(js, { filename: 'gcdatlas.js' }); }
 catch (e) { console.error('Syntax error in the bundled script:\n' + e.stack.split('\n').slice(0, 6).join('\n')); process.exit(1); }
+// every file shares one scope: two top-level functions with one name are not a syntax error, the later one silently replaces the first
+// (the ride camera's shotPose once replaced the launch camera's, and the flight to a rocket came out as NaN)
+{ const seen = new Map(), dup = [];
+  for (const f of list) for (const m of read(f).matchAll(/^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/gm)){ if (seen.has(m[1])) dup.push(`${m[1]} (${seen.get(m[1])} and ${f})`); else seen.set(m[1], f); }
+  if (dup.length){ console.error('The same top-level function name in two places:\n  ' + dup.join('\n  ')); process.exit(1); } }
 
-const head = read('00-head.html'), body = read('01-body.html');
+// the Earth detail images (tools/earth-detail.mjs) are served next to the page, never inside it: dist/earth/
+{ const src = path.join(ROOT, 'assets', 'earth'), dst = path.join(DIST, 'earth');
+  if (fs.existsSync(src)){ fs.mkdirSync(dst, { recursive:true });
+    const want = new Set(fs.readdirSync(src)); for (const f of fs.readdirSync(dst)) if (!want.has(f)) fs.unlinkSync(path.join(dst, f));
+    for (const f of want){ const a = path.join(src, f), b = path.join(dst, f); if (!fs.existsSync(b) || fs.statSync(b).size !== fs.statSync(a).size) fs.copyFileSync(a, b); } } }
+// the link preview (og:image, 1200 x 630, made by tools/og-image.mjs): what a shared link shows in a chat or a post
+fs.mkdirSync(DIST, { recursive: true });
+fs.copyFileSync(path.join(ROOT, 'assets', 'og.jpg'), path.join(DIST, 'og.jpg'));
+const head = read('00-head.html');
+// what's new: docs/PATCHNOTES.md ("## version · date · title", then "- " bullets) as the panel's HTML, newest first and open
+const esc = t => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const notes = [];
+for (const line of fs.readFileSync(path.join(ROOT, 'docs', 'PATCHNOTES.md'), 'utf8').replace(/<!--[\s\S]*?-->/g, '').split(/\r?\n/)){
+  const h = line.match(/^## (\S+) · ([^·]+?) · (.+)$/), b = line.match(/^- (.+)$/);
+  if (h) notes.push({ v:h[1], date:h[2].trim(), title:h[3].trim(), items:[] });
+  else if (b && notes.length) notes[notes.length - 1].items.push(b[1].trim());
+}
+if (!notes.length){ console.error('docs/PATCHNOTES.md has no versions'); process.exit(1); }
+const notesHtml = notes.map((n, i) => `<details data-v="${esc(n.v)}"${i ? '' : ' open'}><summary><span class="nv">${esc(n.v)}</span><span class="nd">${esc(n.date)}</span><span class="nt">${esc(n.title)}</span></summary><ul>${n.items.map(t => `<li>${esc(t)}</li>`).join('')}</ul></details>`).join('\n');
+const body = read('01-body.html').replace('<!--PATCHNOTES-->', notesHtml);
 const version = new Date().toISOString().slice(0, 10);
 const script = `<script>\n/* gcdatlas ${version} */\n${js}\n</script>\n`;
 
@@ -36,9 +60,18 @@ const meta = `<meta charset="utf-8">
 <meta name="description" content="An explorable universe drawn entirely in ASCII: real planets, stars, nebulae, black holes and galaxies at their true positions, with seamless zoom from Earth to the edge of the observable universe.">
 <meta name="theme-color" content="#04050a">
 <meta property="og:title" content="gcdatlas">
+<meta property="og:site_name" content="gcdatlas">
 <meta property="og:description" content="The real universe, drawn entirely in ASCII. Zoom from Earth to the edge of the observable universe.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://gcdatlas.com/">
+<meta property="og:image" content="https://gcdatlas.com/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="M87*, a black hole with its glowing disc bent round its shadow, drawn in ASCII characters">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="gcdatlas">
+<meta name="twitter:description" content="The real universe, drawn entirely in ASCII. Zoom from Earth to the edge of the observable universe.">
+<meta name="twitter:image" content="https://gcdatlas.com/og.jpg">
 <link rel="canonical" href="https://gcdatlas.com/">
 <link rel="icon" href="data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="#04050a"/><text x="16" y="23" font-family="monospace" font-size="22" font-weight="700" text-anchor="middle" fill="#ffb35c">*</text></svg>')}">
 `;
@@ -49,5 +82,9 @@ fs.writeFileSync(path.join(DIST, 'artifact.html'), `${head}\n${body}\n${script}`
 // the lab (/lab): the same page, told before its script runs to open as a small stage for trying the Halo's looks (src/09l-lab.js); kept out of search
 const labHead = head.replace(/<title>[^<]*<\/title>/, '<title>gcdatlas lab</title>');
 fs.writeFileSync(path.join(DIST, 'lab.html'), `<!doctype html>\n<html lang="en">\n<head>\n${meta}<meta name="robots" content="noindex">\n${labHead}\n</head>\n<body>\n${body}\n<script>window.__LAB = 1;</script>\n${script}</body>\n</html>\n`);
+// the song review page (/songs): the same page, told before its script runs to list every candidate song of the radio, to play
+// and mark keep or drop (src/09s-songs.js); kept out of search
+const songsHead = head.replace(/<title>[^<]*<\/title>/, '<title>gcdatlas songs</title>');
+fs.writeFileSync(path.join(DIST, 'songs.html'), `<!doctype html>\n<html lang="en">\n<head>\n${meta}<meta name="robots" content="noindex">\n${songsHead}\n</head>\n<body>\n${body}\n<script>window.__SONGS = 1;</script>\n${script}</body>\n</html>\n`);
 const kb = f => (fs.statSync(path.join(DIST, f)).size/1024).toFixed(0) + ' KB';
 console.log(`built ${list.length} scripts -> dist/index.html (${kb('index.html')}), dist/artifact.html (${kb('artifact.html')})`);

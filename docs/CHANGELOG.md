@@ -4,6 +4,285 @@ All notable changes, newest first. Dates are UTC.
 
 ## Unreleased
 
+- Merged `origin/main` (v0.10.2) into `feature/wallpaper-mode`: the branch now has everything upstream released, plus the KDE Plasma wallpaper.
+- `HALO.TURN` back to 0.42 (upstream's value, from the fork's 0.35). The narrower turn was the fork's fix for a circling failure on the old Halo route; on 0.10.2's faster Halo tour it made the stops 53 s and lost the Great Red Spot's scan bracket, and `tests/motion.mjs` and `tests/pipsmooth.mjs` both failed. With 0.42 the whole suite passes.
+
+## 0.10.2 · 2026-10-01
+
+**The Halo tour keeps the normal tour's pace** (owner, 2026-09-30: it spent about 2 minutes at each place; "the main point of the halo tour was to mirror the normal tours but in the perspective of halo's 3rd person view with cool scenes, moments (halo dynamically interacting or flying through the objects)"; picked from three each time)
+- About 40 s a stop, jump included, like the normal tour (26 to 64 s a stop, 43 on average). It was 67 to 131 s: a stay of about a minute that only ended with a pass, plus loops, a signature move and a job.
+- The Halo arrives straight into its move for the place and goes on at the end of that pass: through Saturn's ring gap, through a star's corona, low over the Great Red Spot or Earth's day side, weaving through a nebula. A move that needs a heading of its own (Saturn's ring gap, a ring nebula's hole, a galaxy's disc) arrives by a fold, since a light-speed leg comes in on a fixed line.
+- At about one place in three it arrives on a job instead, taking turns: an attack run with Pip's railgun, a scan, a skim to refuel where the place can be skimmed. That stop runs a little longer, and Pip comes out for it.
+- Pip comes out on the tour only for a job (a stop is short, and the jump waits for Pip to come home).
+- Started at a place where the Halo already is, with little of its pass left, the tour gives it one more pass there first.
+
+**Close and far** (owner: the camera was too often far from the Halo; picked: wide and close take turns, a close-up with the Halo about a third of the screen)
+- Four close-ups: beside the ship with the place over its shoulder, from just behind it flying at the place, swinging round it, and a push in from far away. The place still fills the background through the long lens.
+- Wide and close take turns: a wide shot as the Halo arrives, its move from close behind the ship (from about 5 s before the move's main moment to 2 s after), then a wide one.
+- A horizon shot puts the horizon on the surface itself (a star's photosphere, a planet's globe), not on the glow framed for the whole place: on a corona pass the star was 40 degrees below the view.
+
+**The Halo indicator** (owner: the square with "halo" and its distance)
+- Hidden during the Halo tour, with its arrow at the screen's edge.
+
+**Checked**
+- Motion test: on the Halo tour from Saturn, stops of 30 to 50 s on average and none over 70, moves on arrival and at least one job; the place framed first in 85% of the samples or more, the ship in the picture, and bigger than the place in 5% of the samples at most (close-ups).
+- Measured on the test's route: 36 to 51 s a stop, 40 on average; an attack run at the Pillars, a skim at Betelgeuse, a scan at Eta Carinae.
+
+## 0.10.1 · 2026-10-01
+
+**Staging** (owner: when the booster cut its engines the animation was abrupt, too fast and not natural)
+- The ship jumped 71 m down into the booster at separation and raced off at 300 m/s. Each stage now leaves the stack gradually over 12 s, from where it stood on it, its position and speed carried on from the stack's: the gap opens to about 70 m after 1 s, 150 m after 3 s and 575 m after 5 s. Falcon's stack stood still for 3 s before separation and then jumped 5 km; it now carries on along the core's path, and its second stage no longer passes back through the core.
+- The booster's engines shut down in steps over about 2.5 s, as on the real flights: the outer 20, then the middle 10, the 3 in the middle burning on through hot staging. The boostback burn uses 13 engines and the landing burn 13 then 3, so their flames have the right size and sound.
+- Staging plays in real time (it played 1.2 to 3 times faster).
+
+**The booster's flight home** (owner: random cuts and skips; the camera jumped and warped back and forth)
+- The playback speed eases between its settings over about 1.8 s of real time, slowing before a slow part so it plays slow from its first second. It jumped from 3 to 16 times and back to 1.6.
+- The camera stays with the booster from separation to the catch: it rides beside the stack, moves over to the booster as they part (with the ship's flame climbing away above), and stays with it through the flip, the burn back, the coast, the descent and the catch, with the tower in the picture. It used to switch from the ship to the booster while the booster was off the screen for 2 s, swoop 13 km from beside it to a ground camera in 3 s, hold on the tower for 6 s while the booster was above the picture, and fly 900 km back to the ship.
+- After the catch the picture dips through black to the ship, 900 km away, instead of sweeping across.
+- Each new shot starts exactly where the last one left off: it was carried from where its stage was a frame later, so at 2 km/s the picture hopped by a quarter of the screen at every new shot.
+- Checked frame by frame from T+2:20 to the catch: the booster stays on the screen throughout, the view turns at most 0.43 degrees a frame, and at a new shot the subject moves at most 0.5% of the screen.
+
+**Looking round during a launch** (owner: the rocket always pointed up the screen and the angles could not be changed; a right-drag moved the rocket)
+- Dragging (or the wheel) takes the camera from the director: it orbits the rocket at any angle and keeps following it. The director takes the camera back 10 s after you let go, gliding in from where you are, or when you press play. The pause button still keeps the camera yours.
+- The camera orbits a stage in a level frame, up the local vertical: in the stage's own frame the rocket always pointed up the screen and the view turned over with it as it pitched and flipped.
+- When the director lets go of a long lens, the camera moves in as the lens widens, so the rocket keeps its size on the screen.
+- On a rocket or its pad a right-drag turns round it like a left drag. A pan let go of the rocket, and the free camera, which moves with the rocket, slid it across the screen as if you were dragging it.
+
+**Sound, shake and caption**
+- The music dips to about two thirds under the roar (a quarter before), so it stays through a launch.
+- The camera shakes less: mostly a sway 1 to 3 times a second with a lighter tremor, up to about a quarter of a degree (half a degree of fast jitter before).
+- While the interface has faded, the caption fades too, 4.5 s after it is written out, and comes back for a new caption (new words, not just the clock moving on).
+
+## 0.10.0 · 2026-09-30
+
+**Watching a launch: one take from space to the pad** (owner: picking a rocket, the camera zoomed in at weird angles, under the Earth or behind a rock, clipped, and some transitions were abrupt)
+- Picking a rocket flies straight there (no detour past anything else) and comes down from space onto the pad: over the flight the view turns, never fast, to look straight down on the site, then tilts to the countdown's first angle as it descends. The picture's up is carried along and rolled evenly. It takes at least 9 s (6 s on quick travel). Setting off far away, it heads for where the pad will be once it is day; from the space station it goes round the Earth, not through it.
+- It never goes underground, never looks at the pad through the Earth, and keeps a twentieth of its distance clear of the ground; checked frame by frame from Earth, the Moon, Saturn, Andromeda, the Sun and the station at both travel speeds (at most 3.6 degrees of turn a frame on the cinematic setting).
+- During a flight no shot change jolts: a chase-plane view before each camera on a hull (the move from the ground went 2 km in 4 s and swung 120 degrees in one frame); the station's camera moves with the station; the picture never flips over (its up turns at most 90 degrees a second); a blend turns at most 100 degrees a second. Checked for all four flights: at most 4.5 degrees of turn and 4.8 of roll a frame.
+- Cameras near the ground stand at least 2.5 m above whatever is under them and see over dunes, hangars and berms to what they film (a Falcon Heavy camera passed 2 m into a berm).
+- The countdown's aerial view starts high over the pad, where the descent ends, and glides down.
+
+**The launch you can hear and feel** (owner: more effects, like the smoke, vibration and pressure of a real launch, and a cool rocket sound)
+- Sound: a deep rumble, the roar and the crackle of a big rocket's exhaust. It comes from each burning stage as it was when the sound left it, at 343 m/s, so from the far cameras the roar arrives seconds after the flame; it fades with distance and thinner air, and there is none in near-vacuum, except on a camera fixed to a hull, where the structure carries a muffled roar. The music dips under it (owner's choice). It plays when the sound is on.
+- The camera shakes near the pad, up to about half a degree, 10 to 20 times a second with a slower sway, and buzzes on a hull. None for people who ask their computer for reduced motion.
+- The ground cloud billows out to about 500 m round Starbase's pad and rises to about 170 m, its lobes rolling outward, brighter on its sunward side; at ignition a ring of dust and spray races out from the pad.
+- A smoke column rises from the pad to about 14 km behind the rocket, widening, fading over a couple of minutes and drifting with the real wind at its height.
+- A vapour cone forms round the rocket near the speed of sound, below about 13 km.
+- The cameras by the pad at liftoff stand 410 and 630 m out (Falcon's about 320 m). They stood 40 to 120 m out, where the new ground cloud swallowed them within seconds and the picture turned to grey fog. Now the rocket rises out of the cloud in view.
+
+**Real skies and weather** (owner: a more beautiful sky with dynamic clouds and realistic weather; picked: real weather)
+- A new function, /api/weather, gets the weather over the three launch sites from Open-Meteo, hour by hour from three days ago to two days ahead: cloud cover low, mid and high, wind at 10 m and at about 1.5 km, visibility, rain and humidity. It uses the pads' coordinates only.
+- Three cloud layers from it: low cumulus (or flat stratus when the sky is nearly covered), their base worked out from the humidity, with bright sunlit tops and grey undersides; altocumulus puffs at 4.5 km; cirrus streaks along the wind at 9 km. They drift with the wind at the flight's pace and slowly change shape, cast shadows that move over the ground, and a rocket climbing through the deck fades into it.
+- The haze follows the real visibility. The sky is a richer blue, gold round a low Sun, with the Earth's shadow and the pink band above it at dusk and dawn.
+- Without the weather (offline, the artifact page) a fair day with a few clouds.
+- Dawn and dusk are brighter near the ground: the light is full once the Sun is 12 degrees up (it was 20), as a camera's exposure would follow it. A launch soon after sunrise came out murky.
+
+**Starbase as it is now**
+- The ground round Starbase's pads is from NOAA's aerial photos of 18 January 2026 (0.3 m a pixel), with the finished Pad 2, the tank farm and the new buildings; USDA's October 2024 photos fill what NOAA did not fly, their colours shifted to match NOAA's (the difference measured round each patch and spread smoothly into it: the autumn fill stood out as green, yellow and teal squares). The 2022 photo showed marsh where Pad 2 now stands. NOAA flies at an angle, so the photo's towers lean across the ground like long shadows; the page's own towers stand at the pads.
+- OpenStreetMap entries that do not belong in a height map are left out: an underground flame trench mapped with its tower's height, and lattice towers that turned into blocks floating in the sky.
+
+**Starman's Roadster** (owner: it looked bad; make a high quality replica)
+- A new model of the 2008 Tesla Roadster at its published size: 3.95 m long, 1.85 m wide, 2.35 m between the axles. It has the bonnet between the front wings, the wing crests, haunches over the rear wheels, the intakes behind the doors, teardrop headlights, mirrors on stalks, the black roll hoop and ten-spoke wheels.
+- Starman sits in the left seat, right hand on the wheel and left arm on the door, as in SpaceX's photos. His suit is white with black shoulders, knees, gloves and boots, and his visor is dark.
+- A soft fill light from above keeps the shaded side readable. In space that side would be nearly black: `docs/ACCURACY.md` says so.
+- The first angle is closer and lower, and the second looks over Starman's left shoulder. On a phone held upright both stand back until the car fits across the screen.
+- The shader compiles in about 0.4 s on Direct3D (0.7 s before).
+
+**Under the hood**
+- `frel` gives the exact position when the focus circles the object (the ground moved thousands of kilometres a frame, seen from the station while the clock jumped).
+- The ground and sky shader compiles in 0.6 s on Direct3D, the rockets' in 1.0 and 1.2 s (in the background while the camera flies in).
+
+## 0.9.12 · 2026-09-30
+
+Built as 0.9.10 (PR #38); renumbered 0.9.12 when 0.9.11 (PR #36) merged first and was brought in.
+
+**The Halo tour shows the places** (owner, 2026-09-30: "the tour object should be the main focus of almost every shot and halo is more a bonus cool addon")
+- The Halo tour has shots of its own. Each frames the place first, through a long lens: the camera sits a few hundred to a few thousand km behind the ship, so the place fills a set share of the view (from all of it with room round it, to more than the view) and the Halo sits small in front of it, a few percent of the view. Up close to a planet or a star the place becomes a horizon across the lower part of the view, with the ship above it.
+- Seven shots and one for each job: the place whole as the ship arrives, the ship crossing in front of it, the place filling the view, the ship nearer with the place big beside it, over the horizon from the side and from behind, and a long way off with the ship a glint. The scan shows its hologram on the place, the weapons test is seen from behind the ship as it runs in, the skim and the signature moves over the horizon.
+- The lens eases in and out: riding starts with the plain view and zooms in while the camera backs away, so the ship keeps its size and the place grows. Between places (light speed, the fold) the camera goes back to the view behind the ship, as before.
+- Before, the ride camera sat a few ship lengths from the Halo: the ship covered 10 to 50% of the view and the place 0.2 to 3% (the Halo roams 8 to 20 radii out for most of a stay, and round a star 50 radii out, outside its glow). On the test's route (Saturn, Alpha Centauri, Betelgeuse) the place now covers 17 to 44% of the view on average in each kind of shot and the ship under 1% (the first seconds at a new place, while the camera comes out of the view behind the ship, 6%).
+- A click on the Halo during the Halo tour rides along again with these shots. It used to switch to the ship's own angles, which trail it: the place was behind the camera about 90% of the time.
+- The shots keep a steady roll while the ship turns and loops, and the ship can pass right over the place's centre without the picture turning. Before the ship leaves a place, the swing into the view behind it starts in the last 6 s of the stay and runs slower (the turn before a light-speed hop is often only 3 s).
+- On a phone the picture's shift into the free space above the card follows the lens (it lagged the zoom, and at 40 times it put Alpha Centauri off the screen).
+- Pip's show is left out of the Halo tour's jobs, and the ride camera's close-ups of Pip too: in these shots Pip would be a speck. Riding along without the tour is unchanged.
+
+**Places show whatever the camera is locked on**
+- Some places change their look with the camera's distance: the Crab Nebula fades round its pulsar, the Galactic Centre round Sgr A*, the Carina, Veil, Tarantula and Lagoon nebulae round the stars inside them, orbit lines and belts come and go, readouts switch to their close-up lines. They went by the distance to what the camera is locked on, which riding along is the ship itself, a few hundred km away: every such place took its closest form, the Crab Nebula faded to 4% and Saturn's readout said the camera was inside its rings. With the Halo they now go by the camera's distance to the place the ship is visiting (`viewDist`).
+
+**Fixes**
+- After you stop riding, Pip is no longer held to its calm bits: the ride camera's close-up of it was left half faded in, and it also changed when Pip came home and so when the ship jumped.
+- On the Halo tour Pip acts as when no one rides along while the tour's shots have the camera (they sit 15 to over 2,000 ship lengths away): it faced and waved at the camera only within 80, and each crossing in the middle of a bit made it jump.
+- The Halo tour's stay lengths draw from the ride camera's dice, so the motion test flies the same tour on every run (a check failed now and then).
+
+**Checked**
+- Pip smoothness test: the Halo tour's camera at most 66 degrees a second on a desk and a phone, no cuts.
+- Motion test: on the Halo tour from Saturn, at a place (a pass or a loop), the place's disc covers at least 4% of the view or is 3 times the ship's size in 85% of the samples or more, the ship stays in the picture and is never bigger than the place, and a click on the ship rides along again.
+
+## 0.9.11 · 2026-09-30
+
+Built beside 0.9.10 (the Halo tour's camera, in review at the same time); whichever merges second renumbers.
+
+**Sharing and credit** (owner, 2026-09-30: make the site easier to share and say who made it, without anything personal)
+- Link previews: a shared link shows a 1200 x 630 picture (M87* at its third angle, with "gcdatlas", "the real universe, drawn in ASCII" and gcdatlas.com) in chats, X, Discord and the like. New meta tags: `og:image` (with size and alt text), `og:site_name`, `twitter:card` (large image) and its title, description and image. `tools/og-image.mjs` (`npm run og`) renders candidates on the GPU into tests/out/og/ and writes the chosen one to assets/og.jpg; build.mjs copies it to dist/og.jpg.
+- The site's address is gcdatlas.com: the canonical link, `og:url` and the preview point there (gcdatlas.vercel.app still works).
+- Photo mode signs its pictures and its copied text gcdatlas.com (was gcdatlas.vercel.app).
+- Help's last line: what's new · made by GCD · the code on GitHub · your settings, location and progress stay on your device. What's new ends with "Made by GCD; the code is on GitHub."
+
+## 0.9.9 · 2026-09-30
+
+Built as 0.9.7 (PR #34); renumbered 0.9.9 when 0.9.8 (SpaceX, PR #29) was merged first and brought in.
+
+**The info panel** (owner, 2026-09-29)
+- The grey angle line ("‹ angle 1/4 [#####-----] ›", "en route", the Halo tour's stop) now sits right under the name, not at the bottom of the info panel, on a desk and on the phone card.
+- The "halo tour" button is gone. Right of a plain "▸ tours" button is a switch labelled "Halo tour" (owner, round 2: "a typical toggle that is intuitive"): a grey track with the knob on the left when off, a glowing Halo blue track with the knob on the right when on. On, it flies the tour you picked with the Halo; while it is on, the list of tours says "flown by the Halo" and picking a tour starts it with the Halo. Space and Enter flip it, and the knob does not slide with reduced motion.
+- On a phone the ship menu's Halo tour item has the same switch, and the list of tours has one at its top.
+- To make room on the desk's top row, ship and ride moved to the lower row beside play (the ride camera switch joins them while riding), and the top bar leaves 400 px on its left (was 440).
+- On the Halo tour the info panel shows the place, not the ship: its name, fact and numbers, with one blue line over the name saying what the ship is doing ("with the Halo · a wide pass round Saturn") or where it is going ("→ Jupiter · light speed"). It moves on to the next stop as soon as the ship sets course, and back to the Halo when the tour ends. The ruler, share, compare size and the seen marks follow the place; flyby is hidden.
+- On a phone the Halo's "out of light speed" toast no longer sits on the Halo tour's caption.
+
+**Pip is out for most of every stay** (owner: it rarely came out; "make the viewer love Pip")
+- Pip comes out a few seconds after the Halo arrives somewhere and stays out until the stay is nearly over; it flies home as embers before the ship jumps, and the jump waits for it.
+- Between things to do it flies alongside the bow, looking round. Its bits: peekaboo (it glides in from the right edge of your view and back out, twice, with hops and a giggle), riding along beside you (a close-up of its face, glancing at the place and back at you), sitting on the bow in the wind, chasing a spark that drifts off the ship's heart and putting it back, a happy twirl, and its four old outings (a hull check, the engines, photos and a wave, play). Never the same one twice running. (A heart it drew in the air was removed in review.)
+- It helps with every job: it gathers the scan's readings (motes of light rising to it from the body), braces at the bow scoop through a skim, and is the heart of the railgun (below). Its show (the old outing) is still a job now and then, with the cameras turned to it.
+- Pip is a third bigger (0.08 of the ship's radius, about 200 m across), so it shows beside the ship.
+- The ride camera now and then gives Pip a close-up for 8 to 12 s, slow and smooth: only while Pip does something calm near the ship, gliding in and out over about 2.5 s and following it gently, the ship and the place still in view. Its lines show in the readout.
+- Everything Pip does is smooth (owner, round 2: abrupt cuts on the Halo tour, peekaboo and the photo "teleporting"): flights are paced to their length at an easy speed and kept clear of the hull, flights to a spot by the camera land exactly on it as it moves, a move cut short no longer snaps, and Pip's body turns through two easings.
+- The cameras on the Halo no longer lurch: locked on, when a job ends, as a pass starts or before a jump; riding along, between shots (longer for a big change of distance, such as from the Halo tour's pull-back), into and out of the view behind the ship, with no sudden roll.
+
+**The weapons test: Pip's railgun, on an attack run** (owner: the 0.9.4 ring gun "spawns meh and unnatural"; round 2: the first cannon fired "at a random unnatural angle"; picked from three each time)
+- The weapons pass is an attack run, like a fighter strafing: the Halo comes in on a straight line with its nose on the body, fires straight along its heading, then pulls up and climbs away. By a black hole it keeps its usual distance.
+- Pip settles on top of the needle near its tip and winks, and stays itself as the gun's heart while it unfolds round it like a transforming toy: plates swing down and clamp round the needle, two rails telescope forward past the tip segment by segment, prongs flip in at their ends, each locking with a spark. Light runs from the heart down the hull into it.
+- Three rail slugs, each a white point too fast to follow with a straight streak behind it and a cone of light at the muzzle, and a flash, sparks and a glowing crater where it hits; then a charged big shot (lightning crackling between the rails, Pip's eyes narrowing) with a longer, thicker streak and two shock rings. The rails and Pip kick back with each shot; the rails vent, glow hot and cool, fold away the same steps backward, and Pip twirls.
+- The craters cool from white to orange to red and dark, and are gone within 7 s. By a black hole the shots fall in: they redden, stretch and fade at the shadow's edge, and a faint ring of light runs out from it (the owner's 2026-09-27 request). Nothing is ever drawn inside the shadow.
+- Replaces the 0.9.4 ring gun and its three shots (fold lance, singularity round, time echo).
+
+**A signature move at every kind of place** (owner: "make halo do cool manuevers and movement based on the object")
+- Once a stay, on its second pass, the Halo flies a move made for the place, easing to half speed round its best moment, with a ride camera shot low behind it and a line in the readout:
+  - Saturn: through the Cassini Division, the gap in its rings.
+  - Jupiter, Mars, the Moon, Io: low over the Great Red Spot, Valles Marineris, Tycho and Pele (when they are on the day side); Earth, Titan, Europa, Ceres: low over the day side (over Earth about as high as the space station).
+  - Stars: through the corona. Galaxies: an arc inside the disc, among the arms. Ring nebulae: along the axis through the hole, beside the central star. Other nebulae, remnants and star clusters: a weave through the middle. Halley: through its tail when it has one, else close by the nucleus.
+  - Black holes, the magnetar and quasars keep their distance.
+- A place with a move has one job at most, on the third pass, so the stay stays about two minutes.
+
+**The engines** (owner: the trail "looks like some kind of water", then the rings "look like bubbles")
+- A short blue ion flame: a white-hot core in a flickering blue cone, and a glow in the nozzle. It is longer and brighter the harder the engines work (speed, hard turns, the fold drive spooling up), a long white streak at light speed. About a tenth of the ship long cruising, never under a few characters on screen, so a far ship still shows it is moving.
+
+**The lab** (`/lab`)
+- New buttons for each of Pip's bits, an engines camera and a Pip camera (the ride camera's close-up). For a weapons test the parked ship turns its nose onto the place, and the aim camera looks along its heading.
+
+**Checked**
+- Motion test: Pip is out for most of a stay at Mars (167 of 176 s on the test's route), in the picture, doing several bits with several faces, never inside the hull, below the surface or more than 3.2 ship radii out, home as embers before the jump; called home early it is back within 1.7 s and sad; an attack run on the Moon unfolds the railgun fully, fires 3 slugs and a big shot within 1 degree of the heading, leaves 4 craters and nothing after; at Sgr A* an attack run's shots fall in and nothing is drawn in its shadow; stays with a signature move last 114 to 152 s on the test's route. The ride camera's close-up keeps the ship and the place in view.
+- New test, tests/pipsmooth.mjs (in `npm test`, `npm run test:pip`): Pip and the Halo's cameras every tick, over every bit, launch and way home, a hurry, every job (the weapons test on an attack run), whole stays and 240 s of the Halo tour, riding and locked on, on a desk and a phone. It fails on a screen step over 40 px in a frame, Pip over 2.2 ship radii/s or 20 ship radii/s², its body over 900 degrees/s, or the camera over 110 degrees/s or its turn changing by over 600 degrees/s². This release's first build had 251 such events; now 0.
+- Smoke test: the Halo tour switch sits right after tours on the same row, is a real switch (role, name, pill size), starts and ends the Halo tour, slides its knob (not with reduced motion), answers Space and Enter; the note shows; the top row is one line at 1280 px; the Halo tour's panel shows the place. Phone test: the angle line sits under the name, the card shows the place on the Halo tour, and the ship menu's and the list of tours' switches work.
+
+## 0.9.8 · 2026-09-29
+
+Built on the desktop as 0.9.5 (PR #29) while 0.9.4 and 0.9.6 were being made; renumbered 0.9.8 when it was brought up to date with them (0.9.7 was taken on the desktop).
+
+**SpaceX launches and Starman's Roadster**
+- Starman and the Tesla Roadster, where they really are right now: the cherry-red car with Starman at the wheel, still fixed to the Falcon Heavy upper stage that carried it in 2018. The position comes from NASA JPL's own tracking (JPL Horizons, solution 11). The readout gives its distance from Earth and from the Sun, its speed, the laps of the Sun it has made, how far it has flown, and its next predicted close pass (Mars, 22 April 2035, 2.4 million km). One angle pulls back until its whole orbit round the Sun is in view.
+- Four SpaceX rockets stand on their real pads, in the atlas under human-made: Starship on the launch mount beside its tower at Starbase, Texas (Pad 2); Falcon 9 at Cape Canaveral; Falcon Heavy at Kennedy; Crew Dragon docked at the International Space Station.
+- Pick one and it launches. The camera flies down to the pad in one move, a 20-second countdown starts with a view from the air that glides in to the rocket, and the whole flight plays with a moving camera: liftoff in a cloud of exhaust and steam, a tracking camera miles away, a camera on the booster's side looking down at the ground falling away, max Q, stage separation up close, the boosters turning back, and the landings.
+- Starship: 33 engines, hot staging, the booster flying back to Texas and caught by the tower's chopstick arms, the ship burning on toward orbit. Falcon 9: the booster lands on a droneship at sea. Falcon Heavy: both side boosters land back at Cape Canaveral seconds apart, as on its first flight in 2018, and the centre core on a droneship. Crew Dragon: launch, separation from the second stage, then, about a day later, the approach to the space station, holding about 220 m and 20 m out, and docking.
+- Real SpaceX launches play at their real time from their real pad, from the same launch schedule the atlas already shows. A caption with a watch button appears 20 minutes before liftoff, on any page, and you can join a flight already on its way.
+- Now and then, while you look at Earth, an illustrative replay lifts off from a pad on the side you can see, in daylight: a glowing trail from orbit, and a caption with a watch button.
+- A link to a rocket (for example gcdatlas.vercel.app/#o=starship) starts its countdown when it opens.
+- The small illustrative ascents that used to rise from the launch pads are gone.
+
+**The ground round the launch sites is real** (owner, after the first look: the Earth there should look real, "the point is to be impressed at the earth detail")
+- Starbase, Cape Canaveral with Kennedy, and Vandenberg are drawn from real images and heights: USGS aerial photos round the pads (0.3 m a pixel at the Cape, flown 9 January 2023; 0.6 m at Starbase, flown 10 June 2022), Copernicus Sentinel-2 satellite images (10 m, clear scenes from 2025 and 2026) for regions 410 km across and for Vandenberg, the ground's height from the AWS Terrain Tiles (USGS 3DEP elevation in the United States), and about 2,300 buildings from OpenStreetMap.
+- Near the ground the heights are ray-marched: the Vehicle Assembly Building, hangars, the tank farms and Vandenberg's hills stand up and cast shadows in the afternoon Sun. Water mirrors the sky and glints; the open sea is one colour (satellite passes from different days showed seams there). From higher up the images lie on the curve of the Earth, and from space the same images show on Earth round the sites, blending into the painted globe with no square edge.
+- The images are files next to the page (3.1 MB in 14 WebP images), never part of it: a site's regional image loads when the camera heads there from a few thousand kilometres away, the fine ones within a few kilometres (all of a site's at once when a rocket there is picked), and they are let go of two minutes after the camera leaves. The page's first load is the same as before. Offline and in the artifact page the ground keeps its sketch.
+- The readout credits the sources while they show (the licences ask for it): "USGS aerial photos · contains modified Copernicus Sentinel data 2025 to 2026 · buildings © OpenStreetMap contributors".
+- `tools/earth-detail.mjs` makes the images (cached, so adding a site only fetches what is new); see `docs/ACCURACY.md` for how accurate and how recent each part is.
+
+**Watching a launch, round 2** (owner: the transitions were abrupt, the flights too long, the galaxies showed from the pad, and launches happened at night)
+- No more cuts. Picking a rocket flies the camera straight into the first shot, and the launch camera takes over from exactly there. Every change of shot is a glide of about 3 s: the aim slides, the camera swings round, the distance and the zoom ease, and it widens on the way when the two subjects are far apart. Two ground cameras travel along the ground from one to the other; into or out of the camera on a booster's side the view swings round the booster. On the way it never goes below the ground or through a rocket or the core of a plume (checked for all four flights).
+- Clicked flights and replays are flown by day: the atlas clock eases over a few seconds to the nearest afternoon at the pad (the Sun about 35 degrees up). Before, a flight played at whatever time the atlas showed, often night at the pads. Live launches keep the real time, at night if they are at night.
+- The air hides the deep sky: near the ground, galaxies, nebulae and far stars fade out with their labels, the star field dims, and the sky is blue by day. They come back above about 90 km. Your sky (the planetarium) keeps the whole sky.
+- About 3 minutes a flight, countdown included (Starship 172 s, Falcon 9 173 s, Falcon Heavy 175 s, Crew Dragon 200 s; they were 244, 224, 249 and 429 s): the quiet parts go faster. While you watch, the caption's "real speed" button plays every second as it happened (a Starship flight is about 9 minutes), and "highlights" switches back. It is remembered.
+- New shots: the aerial view of the place during the countdown; on the booster's side, fixed to its sunlit half, looking down along the hull at the coast falling away (Starship, Falcon 9, Crew Dragon, and a Falcon Heavy side booster); the catch seen from the sunlit side, and the ship from above with the Earth behind it.
+
+**Speed**
+- Earth's shader with the images is a second copy, compiled in the background the first time the camera nears a site (0.4 s on Direct3D); the one drawn at start-up compiles as fast as before (0.3 s).
+- Near the ground, Earth's own volume is not drawn under the ground and sky that cover it (it cost as much again), and the ground's ray march starts at the height of the highest roof near the site: an aerial view costs half what it did, less than a close view of the Sun.
+
+**Under the hood**
+- `build.mjs` fails when two files define a top-level function with the same name: the ride camera's `shotPose` (0.9.6) had silently replaced the launch camera's, and the flight to a rocket came out as not-a-number.
+
+## 0.9.6 · 2026-09-29
+
+Built on the MacBook, on top of 0.9.4 (see `docs/SYNC.md`). Numbered 0.9.6 because 0.9.5 (SpaceX launches) was already open.
+
+**Riding along: the place in view** (owner: straight behind the ship the view missed the planet or star it was near, and a camera that never moves is dull)
+- Riding the Halo, the camera now sits on the far side of the ship from the place it is visiting, so the ship is in front and the planet, star, nebula or galaxy fills the view behind and below it. How far it tips follows the place's size on screen, so a near planet fills the lower half of the view and a far one sits under the ship.
+- It moves by itself: seven shots (over the shoulder, beside it, the front quarter, high with a roll, low along the horizon, wide, a slow orbit), each drifting round or dollying in or out, a new one every 10 to 18 s, gliding there in about 4 s. It keeps to the ship's side and front quarters: from straight behind, its needle points up the screen and it seems to climb.
+- While the ship works (a scan, the fold cannon, a skim) the camera moves to a shot made for the job and holds it until it is done. During Pip's half-minute outings it keeps moving, with close shots only.
+- Between places (light speed, the fold) and for the last seconds before a jump it blends back into the old chase view behind the ship, which the streaks and the fold are made for.
+- **Still camera**: the camera switch (moving / still) appears next to travel while you ride, in settings, and in the phone's ship menu; K switches too. Still holds one angle over the ship's shoulder, the place still in view. It is remembered, and it starts still for people whose computer asks for reduced motion.
+- On a phone the shot fits the space above the card.
+- The ride button keeps its word and lights up while you ride ("riding" was wider and pushed the ? button onto a row of its own at 1280 x 800). The chase view is called the outside view now.
+
+**The Halo tour**
+- A new "halo tour" button beside play (on a phone, in the ship menu). You ride along while the Halo flies the stops of the tour picked in tours, from the one the tour is on, or from where the ship is if that is a stop. Pick another tour while it plays and it switches.
+- It visits the places on its own list and any other real place at least 400 km across that is not a craft or a spot on a surface, and not too big to fly round (the grand tour: 26 places; life of a star: 17). A random tour gives it a shuffle of its places, dealt again at the end.
+- About a minute at each place, one job at most, then light speed or a fold to the next. The camera plays bigger moves: on arrival it pulls back until the whole place fits the view (or the ship is a speck), then pushes back in; sweeps round the ship, a crane over it, a low pass along the horizon, a charge toward the camera.
+- A caption names each place as the ship arrives, with the first sentence of its fact. The card says "stop 5 / 26 · HALO TOUR · GRAND TOUR", the angle line shows how long the ship stays ("Saturn · 5/26 [#####-----]"), and the green button says "next stop · Alpha Centauri" and sends it on at once.
+- A drag takes the camera and play rides along again (the ship flies on meanwhile). The button again, stop riding, a tour, the screensaver or picking something else ends it.
+
+**Fixes**
+- Riding along from far away (the observable universe, the cosmic web) no longer loses the ship. The flight up to it aimed at a point worked out as the difference of two numbers millions of light-years across, which rounding put thousands of kilometres off the 2.5 km ship: it sat 50 to 60 degrees off the view, its marker jumping at the edge of the screen, until it popped into place on the last frame. The flight now measures the point back from its end of the trip, and switches to working relative to the ship sooner when the place it set off from is that far away.
+- In the screensaver the angle line ("angle 2/4 [#####-----]") moves under the place's name, and back into the info panel when it ends.
+
+**Checked**
+- Motion test, new section 5b: riding from the observable universe to the Halo at Andromeda keeps the ship within 30 degrees of the middle of the view all the way (it was up to 60); 70 s of the moving camera at Saturn and at Earth keep the ship on the screen and the place's edge in the view every frame, with 3 shots or more; the still camera keeps one; the Halo tour flies the grand tour from Saturn stop by stop, naming each place.
+- Phone test: the ship menu's Halo tour and camera switch.
+
+## 0.9.4 · 2026-09-29
+
+**A softer bass, and songs to review**
+- The music's bass is much softer. The bass line and the kick drum sit under the music instead of booming over it (bass lines 6 to 11 dB softer against the rest, kicks 6 to 10 dB softer, their click kept so the beat still punches), and the tunes are 2 to 4 dB louder.
+- Ambient piano no longer holds a low hum under every chord; its left hand gives the low end, and its busier right hands are a little softer so the tune stands out. Ambient keeps only a faint low note that fades in over up to 4 s.
+- Every song now has at most 11.5 dB more energy below 160 Hz than in the middle of the sound (400 to 2,500 Hz); it was 11 to 21 dB. The calm songs are at 5 dB or less. Lullaby for Io went from 21 dB to 3.5 dB.
+- Songs keep their notes: only the balance changed, so every song is still the same song.
+- On speakers the music is about as loud as before (1.4 dB louder above 200 Hz); on headphones it is about 4 dB quieter overall, because the boom is gone.
+- For the owner: a review page, /songs, with the radio's 15 songs (rebalanced) and 16 new ones picked by measurement (clear, repeating tunes; mostly lofi and downtempo). Play one, jump anywhere in it, mark keep, drop or not sure, and copy the picks as text. The radio keeps playing its 15 songs until the picks are in. The page is kept out of search.
+- The music test now matches loudness above 200 Hz (what every speaker plays), lets calm songs have a lighter low end, and checks every song's bass balance.
+
+**What's new, and a shorter help**
+- A "new" button beside ? opens the patch notes: every version, newest first, each with a short title and a few lines. The newest is open; tap any other to open it. A small dot on the button means there is a version you have not seen yet (on your first visit there is nothing to catch up on). The full changelog is one link away.
+- On a phone, what's new is in settings and in help, and a dot on the dock's settings button shows when there is something new.
+- Help is short: three columns (look, go, more) that fit a 1280 x 800 screen without scrolling. Keys only show when you have a mouse, gestures only on a touch screen.
+
+**Riding the Halo on a phone**
+- The ship button in the dock opens a small menu over the dock: ride along, cockpit, and show or hide the marker. While you ride, the button says "riding" and the menu offers the chase view, the cockpit and stop riding. A tap anywhere else closes it. On a desk nothing changes: ship shows the marker, ride rides along.
+
+**The Halo: a visible thrust and a fold cannon** (the ship is made up)
+- The Halo's engines leave a glowing trail behind the ship: white at the nozzle, then ice blue, then deep blue, flickering a little and bending into turns. It is a few characters long even from far away, so you can tell the ship is moving, longer and brighter the faster it flies, and a long streak at light speed. It hides behind the hull and the body, and goes with the engines in a fold.
+- A new weapons test: a fold cannon. Three rings build themselves from embers in front of the needle, white-hot pieces streaming off the bow and locking into place, then spin up while space ripples round them. Before each shot the rings glow and light spirals into the muzzle; it kicks back as it fires.
+- It fires three shots. A fold lance: a jagged white-blue crack tears through space to the target, light bleeding from its bends, then seals from the gun end. A singularity round: a black ball in a violet ring flies in, pulls light and debris inward while the ground darkens, then blooms out in violet petals. A time echo: a gold bolt leaves ghost echoes along its path, the blast plays, stutters and runs backward until the surface heals, and the bolt flies back into the gun.
+- Then the cannon breaks up and streams back into the bow. The job still lasts 11.5 s and the route is unchanged. The rail gun, plasma lance and antimatter pulse are gone.
+- Blasts are made of embers about one character each, never a white ball. Round each hit space darkens a little, so the effects read over a bright planet or a black hole's disc. No shot ever shows inside a black hole's shadow.
+- The readout stays honest: "weapons test (fictional) · time echo on Saturn", then "nothing real is harmed: the blast runs backward and the surface heals".
+- The lab (/lab) has an aim camera that looks over the cannon at where it fires, and the showcase (?showcase=halo) now includes a weapons test at Saturn.
+
+**Planets up close**
+- Planets and moons are easier to make out close up: their markings sit at their real places, the light stays even across the lit side, and there is a clear line between day and night. The contrast is stronger than in reality, so the markings read as characters (docs/ACCURACY.md says so).
+- Mars shows Syrtis Major and its other dark markings, bright Hellas and Argyre, Olympus Mons, the Tharsis volcanoes, Valles Marineris and both polar caps.
+- Mercury shows its craters, bright ray craters such as Hokusai and Debussy, and the 1,550 km Caloris basin.
+- The Moon shows its seas where they really are, rayed craters such as Tycho and Copernicus, and the rings of the Orientale basin.
+- Jupiter's belts are darker and redder, and the Great Red Spot is drawn about 16,000 km wide, close to its size today.
+- Saturn's bands follow Cassini's pictures, and its first view looks at the side of the rings the Sun lights (in 2026, from the south), so the rings are bright.
+- Venus shows the dark Y and cloud chevrons seen in ultraviolet photos; its readout says the eye sees a plain planet.
+- Uranus and Pluto, tipped on their sides, now show their sunlit pole; Uranus's view back at the Sun works again.
+- Neptune's dark spot and white clouds, Pluto's heart and its thin blue haze, and the big moons (Io, Europa, Ganymede, Callisto, Titan, Enceladus, Ceres) are clearer.
+- Each kind of body now has a shader of its own, which compiles in 0.06 to 0.32 s instead of one shared shader that would have taken 11 s with the new surfaces.
+
+**Auto detail**
+- Detail has a new first choice, auto, and it is the default. It starts on fine and steps up to ultra after about 5 smooth seconds where ultra's characters are still at least 6 pixels wide (a sharp, high-density screen). On an ordinary screen ultra's characters are 4 x 7 pixels, too small to read as letters, so auto stays on fine there. After 3 slow seconds it steps back to fine; after two steps back it stops trying and remembers that on this device for 14 days.
+- Ultra draws about 1.6 times the characters of fine, and every one of them is ray-marched, so a frame costs about 60% more on the graphics card. That is why fine was the default.
+- If you picked a detail other than fine before, it stays as you set it. V now steps through auto, ultra, fine, normal and bold.
+
 ## 0.9.3 · 2026-09-28
 
 **Search by catalogue number**

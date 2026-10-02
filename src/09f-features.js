@@ -74,7 +74,8 @@ function markSeen(o){
 }
 let seenClock = 0, seenIdx = -1;
 function updateSeen(dt){
-  const i = tour.on ? tour.obj : orbit.lock;
+  // (on the Halo tour the place the ship is at counts, as the panel shows it; nothing while it travels)
+  const i = tour.on ? tour.obj : htShowsPlace() ? (htGoing() ? -1 : infoObj) : orbit.lock;
   if (i < 0 || flight){ seenClock = 0; return; }
   if (i !== seenIdx){ seenIdx = i; seenClock = 0; }
   seenClock += dt; if (seenClock > 3) markSeen(OBJ[i]);
@@ -120,11 +121,19 @@ function saverStops(first){
   if (first) keys.unshift(first);
   return keys.map(k => [k, '']);
 }
+// the angle line ("angle 2/4 [#####-----]") sits right under the place's name while the screensaver plays, and goes back into the info
+// panel when it ends (owner, 0.9.6: with everything else faded it looked lost where it was)
+const angHome = { par:null, next:null };
+function moveAngleLine(toSaver){
+  const el = $('#progress');
+  if (toSaver){ if (!angHome.par){ angHome.par = el.parentNode; angHome.next = el.nextSibling; } $('#svObj').after(el); }
+  else if (angHome.par){ angHome.par.insertBefore(el, angHome.next); angHome.par = null; }
+}
 function startSaver({ embedded = false } = {}){
   if (SAVER.on) return;
   SAVER.on = true; SAVER.embedded = embedded; SAVER.startAt = performance.now();
   togglePanel(null, false); toggleAtlas(false); if (cmp) endCompare(false); $('#daily').hidden = true; if (!$('#help').hidden) toggleHelp(false);
-  document.body.classList.add('saver'); $('#saverHud').hidden = embedded;
+document.body.classList.add('saver'); $('#saverHud').hidden = embedded; if (!embedded) moveAngleLine(true);
   if (embedded) hideHint();
   else try { if (document.fullscreenEnabled && !document.fullscreenElement){ SAVER.fs = true; document.documentElement.requestFullscreen().catch(() => { SAVER.fs = false; }); } } catch (e) {}
   SAVER.prevTravel = SET.travel; if (SET.travel === 'warp') SET.travel = 'quick';
@@ -135,8 +144,8 @@ function startSaver({ embedded = false } = {}){
 }
 function stopSaver(){
   if (!SAVER.on) return;
-  const embedded = SAVER.embedded;
-  SAVER.on = SAVER.embedded = false; document.body.classList.remove('saver'); $('#saverHud').hidden = true;
+const embedded = SAVER.embedded;
+  SAVER.on = SAVER.embedded = false; document.body.classList.remove('saver'); $('#saverHud').hidden = true; moveAngleLine(false);
   if (SAVER.prevTravel) SET.travel = SAVER.prevTravel;
   try { if (SAVER.fs && document.fullscreenElement) document.exitFullscreen().catch(() => {}); } catch (e) {}
   SAVER.fs = false;
