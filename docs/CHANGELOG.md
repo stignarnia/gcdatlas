@@ -4,6 +4,9 @@ All notable changes, newest first. Dates are UTC.
 
 ## Unreleased
 
+- Merged `origin/main` (v0.10.2) into `feature/wallpaper-mode`: the branch now has everything upstream released, plus the KDE Plasma wallpaper.
+- `HALO.TURN` back to 0.42 (upstream's value, from the fork's 0.35). The narrower turn was the fork's fix for a circling failure on the old Halo route; on 0.10.2's faster Halo tour it made the stops 53 s and lost the Great Red Spot's scan bracket, and `tests/motion.mjs` and `tests/pipsmooth.mjs` both failed. With 0.42 the whole suite passes.
+
 ## 0.10.2 · 2026-10-01
 
 **The Halo tour keeps the normal tour's pace** (owner, 2026-09-30: it spent about 2 minutes at each place; "the main point of the halo tour was to mirror the normal tours but in the perspective of halo's 3rd person view with cool scenes, moments (halo dynamically interacting or flying through the objects)"; picked from three each time)
@@ -420,6 +423,12 @@ Built on the MacBook, on top of 0.9.4 (see `docs/SYNC.md`). Numbered 0.9.6 becau
 - When a light-speed hop is too short for a proper jump (the Pleiades to HL Tau), the ship glided on a curve that overshot and was held back, so it stood dead still for up to 2.4 seconds. The glide now changes speed evenly and never stops.
 - At the end of a light-speed leg across the Milky Way the ship moved in jerks, with pauses between, because the distance still to go was rounded over the whole length of the leg. It is now measured from where the ship arrives, and the ship comes in smoothly.
 - The ship never turns faster than its tightest turn, three times its usual rate. The motion test checks this on a whole route and on each of the hops above.
+**New**
+- The site's primary public address is now gcdatlas.com (canonical link, Open Graph metadata, photo watermarks, and upstream User-Agent headers).
+- KDE Plasma 6 live wallpaper: gcdatlas can run directly as an animated desktop wallpaper on Linux (see docs/WALLPAPER.md). Packaged via `npm run wallpaper` as a KDE wallpaper plugin (`app.gcdatlas.wallpaper`) with configurable travel speed, frame rate limit, and automatic power saving.
+- Desktop context menu actions: right-clicking on an empty area of the desktop reveals "Next Object" and "Next View" actions to step through tour stops and camera angles.
+- Wallpaper mode (`?wallpaper=1`): an embedded screensaver tour across all catalog objects with no HUD, sound, or network requests, and input swallowed so desktop clicks do not affect the camera.
+- Wallpaper optimizations: dynamic frame rate pacing (15, 30, 60 FPS) combining `setTimeout` with `requestAnimationFrame`, 1x DPR canvas clamp on HiDPI displays to eliminate fill rate overhead, skipping off-screen DOM updates, and complete freezing via QtWebEngine `LifecycleState.Frozen` when covered by maximized or fullscreen windows.
 
 ## 0.8.6 · 2026-09-27
 

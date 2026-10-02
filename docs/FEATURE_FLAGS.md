@@ -25,7 +25,7 @@ const FLAGS = (() => {
 
 ## Turning a flag on or off for yourself
 
-- In the address bar: `https://gcdatlas.vercel.app/?flags=social,-planes` (on: `name`, off: `-name`). This applies to that visit only (a shared link must not change anyone's settings for good).
+- In the address bar: `https://gcdatlas.com/?flags=social,-planes` (on: `name`, off: `-name`). This applies to that visit only (a shared link must not change anyone's settings for good).
 - To keep a choice in this browser, set `gcdatlas.flags` in localStorage, e.g. `localStorage.setItem('gcdatlas.flags', JSON.stringify({ social:true }))`. Only known flag names with true/false values are read.
 
 ## Adding a flag
@@ -37,3 +37,11 @@ const FLAGS = (() => {
 ## Retiring a flag
 
 When a feature has been on for everyone for a release or two and is staying, delete the flag and its checks. When it is scrapped, delete its files and checks. Note either in the changelog.
+
+## Wallpaper mode overrides
+
+In wallpaper mode (`?wallpaper=1`), network and interactive flags are overridden at startup (`src/04-world.js`):
+- `live`, `launches`, `backyard`, `earthStory`, and `social` are forced `false` (no network calls, no extra UI buttons).
+- `planes` stays `true` (bundled offline data, displays air traffic on Earth).
+
+These overrides are never saved to `localStorage`.

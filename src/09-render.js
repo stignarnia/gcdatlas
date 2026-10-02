@@ -9,7 +9,7 @@ let tanY0 = tanY, tanX0 = tanX;   // (the field of view without the launch camer
 let RT = null, viewFit = 1, LODK = 1, afterFrame = null;   // afterFrame: run once right after the next frame is drawn   // LODK: ray-march step budget, lowered automatically on slow devices
 function freeRT(){ if (!RT) return; for (const k of ['sceneTex','cellTex','glowA','glowB']) gl.deleteTexture(RT[k]); for (const k of ['sceneFBO','cellFBO','glowFA','glowFB']) gl.deleteFramebuffer(RT[k]); }
 function resize(){
-  dpr = Math.min(devicePixelRatio || 1, 2);
+  dpr = WALLPAPER ? 1 : Math.min(devicePixelRatio || 1, 2);
   const cssW = canvas.clientWidth || innerWidth, cssH = canvas.clientHeight || innerHeight;
   canvas.width = Math.max(1, Math.round(cssW*dpr)); canvas.height = Math.max(1, Math.round(cssH*dpr));
   cellW = Math.max(3, Math.round(DETAIL[detailIdx].w*dpr)); cellH = Math.round(cellW*1.8);
@@ -336,6 +336,7 @@ function setInfo(i){
   $('#objName').textContent = o.name; $('#objType').textContent = o.type; $('#objFact').textContent = o.fact || '';
   syncStop();
   syncWhere();
+  if (WALLPAPER && wpTitleEl && !wpTitleEl.hidden && o) wpTitleEl.textContent = o.name;
   setReadout(o.readout ? o.readout() : '');
   syncFlyby();
   atlasMark(i);
@@ -460,6 +461,7 @@ function uiRects(){
   return r;
 }
 function updateLabels(){
+  if (WALLPAPER) return;
   const focus = tour.on ? tour.obj : orbit.lock;
   const clean = focus >= 0 ? focus : cam.focus;   // the object whose disc stays free of other labels (in free flight: the one the camera is centred on)
   const avoid = uiRects(), placed = [];
@@ -524,6 +526,7 @@ function updateLabels(){
   for (const el of starEls) if (el.classList.contains('on') !== el._show) el.classList.toggle('on', el._show);
 }
 function updateHUD(dt){
+  if (WALLPAPER) return;
   roTimer -= dt;
   if (roTimer <= 0){
     roTimer = 0.15;
@@ -1354,6 +1357,47 @@ for (const ev of ['pointerdown', 'keydown']) addEventListener(ev, () => { soundS
 for (const ev of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown', 'wheel', 'touchstart']) addEventListener(ev, () => music.gesture(), { capture:true, passive:true });
 
 // ================================================================ main loop
+// frame time is judged against 60 fps; a capped wallpaper is judged against its own cap, so reaching the cap counts as smooth
+let pace = WALLPAPER ? wallpaperFps/60 : 1;
+function setWallpaperFps(fps){
+  wallpaperFps = Math.min(60, Math.max(10, +fps || 30));
+  pace = WALLPAPER ? wallpaperFps/60 : 1;
+}
+window.setWallpaperFps = setWallpaperFps;
+try {
+  Object.defineProperty(window, 'WALLPAPER_FPS', {
+    get(){ return wallpaperFps; },
+    set(fps){ setWallpaperFps(fps); },
+    configurable: true
+  });
+} catch (e) {}
+const wpTitleEl = $('#wallpaperTitle');
+const VALID_TITLE_POS = ['top-left', 'top-center', 'top-right', 'bottom-left', 'bottom-center', 'bottom-right'];
+let wallpaperTextSize = URLQ.get('textSize') || URLQ.get('titleSize') || 'normal';
+const VALID_TITLE_SIZES = ['xsmall', 'small', 'normal', 'large', 'xlarge'];
+function updateWallpaperTitle(){
+  if (!wpTitleEl) return;
+  const pos = VALID_TITLE_POS.includes(wallpaperTitlePos) ? wallpaperTitlePos : 'none';
+  const size = VALID_TITLE_SIZES.includes(wallpaperTextSize) ? wallpaperTextSize : 'normal';
+  const show = WALLPAPER && pos !== 'none';
+  wpTitleEl.hidden = !show;
+  if (show){
+    wpTitleEl.className = 'wallpaper-title pos-' + pos + ' size-' + size;
+    const oi = infoObj >= 0 ? infoObj : (tour.obj >= 0 ? tour.obj : (orbit.lock >= 0 ? orbit.lock : 0));
+    const o = OBJ[oi];
+    if (o && wpTitleEl.textContent !== o.name) wpTitleEl.textContent = o.name;
+  }
+}
+function setWallpaperTitlePos(pos){
+  wallpaperTitlePos = pos || 'none';
+  updateWallpaperTitle();
+}
+window.setWallpaperTitlePos = setWallpaperTitlePos;
+function setWallpaperTextSize(size){
+  wallpaperTextSize = size || 'normal';
+  updateWallpaperTitle();
+}
+window.setWallpaperTextSize = setWallpaperTextSize;
 let tmT = 0, last = performance.now(), ema = 16, adaptCount = 0, raised = 0, calmT = 0, runTime = 0, resizePending = false, refocusT = 0, lodT = 0;
 // Auto detail (the default since 0.9.4): fine, stepping up to ultra where ultra's characters are still at least 6 pixels wide (a sharp screen;
 // on an ordinary one they would be 4 x 7 pixels, too small to read as letters) once frames have had room to spare for a few seconds, and back
@@ -1454,6 +1498,7 @@ function setCaption(txt, btn){
   capEl.hidden = !txt; capBtn.hidden = !btn; if (btn) capBtn.textContent = btn;
 }
 function updateCaption(dt){
+  if (WALLPAPER) return;
   let txt = '', btn = '';
   if (cmp) { txt = cmpText(); btn = 'end compare'; }
   else if (LCAP.live){ txt = LCAP.txt; btn = LCAP.btn; }   // (a real launch happening now, even on a tour)
@@ -1538,6 +1583,7 @@ function setDeep(kyr){
   deepEl.value = kyr; syncTimeUI();
 }
 function syncTimeUI(){
+  if (WALLPAPER) return;
   const jd = jdNow(), off = jd - realJD();
   tmDate.textContent = fmtJD(jd);
   tmSub.textContent = Math.abs(off) < 0.02 ? 'the Solar System as it is right now' : (off > 0 ? 'the Solar System ' + fmtSpan(off) + ' from now' : 'the Solar System ' + fmtSpan(-off) + ' ago');
@@ -1567,6 +1613,7 @@ function viewHash(){
 }
 let lastHash = '', hashT = 0;
 function updateHash(dt){
+  if (WALLPAPER) return;
   hashT -= dt; if (hashT > 0 || flight) return; hashT = 1;
   const h = viewHash(); if (h === lastHash) return; lastHash = h;
   try { history.replaceState(null, '', '#' + h); } catch (e) {}
@@ -1633,6 +1680,47 @@ function tick(dt){
   if (cmp) placeCompare(dt);
   updateDrift(dt);
 }
+let isFrozen = !!window.__freeze, animFrameId = null, scheduleTimer = null;
+function cancelNextFrame(){
+  if (animFrameId){ cancelAnimationFrame(animFrameId); animFrameId = null; }
+  if (scheduleTimer){ clearTimeout(scheduleTimer); scheduleTimer = null; }
+}
+function queueNextFrame(){
+  cancelNextFrame();
+  if (isFrozen) return;
+  if (WALLPAPER && wallpaperFps < 58){
+    const delay = Math.max(0, (1000/wallpaperFps) - (performance.now() - last) - 3);
+    if (delay > 4){
+      scheduleTimer = setTimeout(() => {
+        scheduleTimer = null;
+        if (!isFrozen && !animFrameId) animFrameId = requestAnimationFrame(frame);
+      }, delay);
+      return;
+    }
+  }
+  animFrameId = requestAnimationFrame(frame);
+}
+function setFreeze(on){
+  const next = !!on;
+  if (isFrozen === next) return;
+  isFrozen = next;
+  if (isFrozen){
+    cancelNextFrame();
+  } else {
+    last = performance.now();
+    queueNextFrame();
+  }
+}
+window.setFreeze = setFreeze;
+try {
+  Object.defineProperty(window, '__freeze', {
+    get(){ return isFrozen; },
+    set(v){ setFreeze(v); },
+    configurable: true
+  });
+} catch (e) {
+  window.__freeze = false;
+}
 // The browser can take the GPU away from the page (a driver reset, a GPU hang in another tab, its own watchdog): drawing stops, a line says so,
 // and when the browser gives the context back the page reloads (every texture, buffer and program would have to be made again). Without
 // preventDefault the context would never come back.
@@ -1640,8 +1728,13 @@ let glLost = false;
 canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); glLost = true; const m = $('#nogl'); m.textContent = 'The browser reset the graphics. The page reloads when they are back, or you can reload it now.'; m.hidden = false; });
 canvas.addEventListener('webglcontextrestored', () => { location.reload(); });
 function frame(now){
-  requestAnimationFrame(frame);
-  if (window.__freeze || glLost){ last = now; return; }
+  animFrameId = null;
+  if (isFrozen || glLost) return;
+  // a wallpaper draws at most wallpaperFps frames a second: the monitor may refresh at 144 Hz, all day, behind every window
+  if (WALLPAPER && now - last < 1000/wallpaperFps - 3){
+    queueNextFrame();
+    return;
+  }
   const dtR = Math.min((now - last)/1000, 0.25); last = now;
   const hitch = progBusy > 0; progBusy = 0;   // the last frame compiled a shader: its time says nothing about how fast the scene draws
   const dt = Math.min(dtR, 0.05);
@@ -1651,7 +1744,7 @@ function frame(now){
   updateCaption(dtR); updateHash(dtR);
   tmT -= dtR; if (tmT <= 0){ tmT = 0.25; syncTimeUI(); }
   runTime += dtR;
-  if (!hitch) ema = ema*0.95 + dtR*1000*0.05;
+  if (!hitch) ema = ema*0.95 + dtR*1000*pace*0.05;
   if (runTime > 2.5) progIdle(1);
   // keep motion smooth on slower devices: first trim ray-march steps, then (at most twice) use bigger characters;
   // after 10 calm seconds at full steps the characters go back to the chosen detail (at most 3 times a session, so it cannot flip back and forth)
@@ -1669,6 +1762,7 @@ function frame(now){
     }
   }
   if (!hintHidden && performance.now() > 18000) hideHint();
+  queueNextFrame();
 }
 resize();
 ladTitles();
@@ -1680,16 +1774,16 @@ syncSettingsUI();
 tick(0);
 if (!applyHash()) tourGo(TOUR[0], true);
 tick(0);
-updateModeUI(); syncTimeUI();
+updateModeUI(); syncTimeUI(); updateWallpaperTitle();
 window.__cosmos = { startTour, playFlyby, setMove(o, v, f){ flight = null; tween = null; tourGo(o.index, true); tour.on = false; flyMove = { o, v, t:f*v.hold, frozen:true }; },  get flyMove(){ return flyMove; }, startCompare, endCompare, setDeep, viewHash, applyHash, get cmp(){ return cmp; }, get ssRate(){ return ssRate; }, set ssRate(v){ ssRate = v; }, dbg:{ imp, impSpec, atlas, sphereRect, get tan(){ return [tanX, tanY]; }, get cols(){ return cols; }, get sceneH(){ return sceneH; }, get LODK(){ return LODK; }, PROGS }, OBJ, BYKEY, tourGo, lockOn, setTour, cam, orbit, tour, TOUR, SET, setOpt, music, LADDER, goLadder,
   land:(extra = 0.2) => { let n = 0; while (flight && n < 60*180){ tick(1/60); n++; } for (let i=0;i<extra*60;i++) tick(1/60); return n/60; },
   setDays:d => { ssDays = d; }, stepObject, stepAngle, get tourId(){ return TOUR_ID; }, get tourGen(){ return TOUR_GEN; }, randomSeed:n => { RSEED = n >>> 0; }, samePlace, tourable, tourPool, tripClear, dealRandom, RANDOM_W, tripW:(a, b) => tripWeight(tripEnd(a), tripEnd(b)), get nextDeal(){ return nextDeal; }, get stepTarget(){ return flight ? (flight.dest || flight.obj).key : null; }, get via(){ return flight && flight.via ? flight.via.key : null; }, PASS,
-  startShipCam, stopShipCam, setShipCamMode, get shipCam(){ return shipCam; }, SHIP_POSE, get show(){ return show; }, togglePlay, get flight(){ return flight; },
+  startShipCam, stopShipCam, setShipCamMode, get shipCam(){ return shipCam; }, SHIP_POSE, get saver(){ return SAVER; }, get show(){ return show; }, togglePlay, get flight(){ return flight; },
   goHome, goBack, unlock, leash, get freeFrom(){ return freeFrom; }, proj:k => { const o = typeof k === 'string' ? BYKEY[k] : k, p = projectCSS(o.rel); return p && { x:p.x, y:p.y, z:p.z }; }, get SYSMAG(){ return SYSMAG; },
-  setDetail:i => setOpt('detail', i, true), render, zoomTo, tick, caption:dt => updateCaption(dt), get showcap(){ return SHOWCAP.txt; }, flightDur:() => flight ? flight.dur : 0, hud:() => { roTimer = 0; updateHUD(0.2); },
+  setDetail:i => setOpt('detail', i, true), render, zoomTo, tick, caption:dt => updateCaption(dt), get showcap(){ return SHOWCAP.txt; }, flightDur:() => flight ? flight.dur : 0, hud:() => { roTimer = 0; updateHUD(0.2); }, get wallpaperFps(){ return wallpaperFps; }, setWallpaperFps, setFreeze, get wallpaperTitlePos(){ return wallpaperTitlePos; }, setWallpaperTitlePos, get wallpaperTextSize(){ return wallpaperTextSize; }, setWallpaperTextSize,
   simulate:(sec) => { for (let k=0; k<sec*30; k++) tick(1/30); return { obj:tour.obj, view:tour.view, phase:tour.phase, lock:orbit.lock }; },
   view:(i, v) => { if (typeof i === 'string') i = BYKEY[i].index; const o = OBJ[i], vp = viewParams(o, v); flight = null; shipCam.on = false; tween = null; cam.focus = i; leash.x = leash.y = 0; orbit.lock = i; orbit.frame = camFrameOf(o); orbit.yaw = vp.yaw; orbit.pitch = vp.pitch; orbit.dist = orbit.distT = vp.dist; orbit.off = vp.off; orbit.offFn = vp.offFn; orbit.target = V.add(frel(o), vp.off); setInfo(i); applyOrbit(); tick(0); } };
 // (the atlas headings and chips, for tools/catalog.mjs, and the seed and the catalogue numbers the smoke test checks; a line of its own so it stays clear of edits to the hooks above)
 Object.assign(window.__cosmos.dbg, { GROUPS, CATS, catsOf, ATL, seedObjects:SEED_OBJECTS, catSplit });
 window.__cosmos.sx = SXDBG;   // (SpaceX launches: runs, missions, the launch camera; s4-spacex-run.js)
-requestAnimationFrame(frame);
+queueNextFrame();

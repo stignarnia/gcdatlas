@@ -8,7 +8,7 @@ The goal: keep adding features and content for years without breaking what alrea
 | --- | --- | --- |
 | Local | `node build.mjs` then open `dist/index.html`, or `npx vercel dev` (with `/api`) | your working copy |
 | Preview | a unique `*.vercel.app` URL per pull request (Vercel posts it on the PR) | the PR branch |
-| Production | https://gcdatlas.vercel.app | `main` |
+| Production | https://gcdatlas.com | `main` |
 
 ## The loop
 
@@ -24,6 +24,13 @@ The goal: keep adding features and content for years without breaking what alrea
 5. **Record it**: add a line to `docs/CHANGELOG.md` under *Unreleased*; update `docs/ACCURACY.md` if something illustrative was added.
 6. **Pull request**: every version ships as its own PR (branch `release/vX.Y.Z`), so it can be rolled back with GitHub's *Revert* button. Push the branch, open the PR, open the Vercel preview on desktop and phone, then merge with a merge commit (one revertible commit per version).
 7. **Release**: `main` deploys automatically. For a named release, move *Unreleased* to a version heading, bump `package.json`, tag `vX.Y.Z`.
+
+## Packaging and releases
+
+- **KDE Plasma wallpaper:** built with `npm run wallpaper` (or `npm run wallpaper:install`), producing `dist/gcdatlas-plasma-wallpaper.tar.gz` and `dist/plasma-wallpaper/`.
+- **GitHub Actions workflow** (`.github/workflows/wallpaper.yml`):
+  - Every pull request runs the test suite and packages the wallpaper archive as a downloadable artifact.
+  - Every push to `main` publishes the archive to the GitHub Release matching `package.json` (`vX.Y.Z`), creating the release if needed or updating its assets.
 
 ## Versioning
 
