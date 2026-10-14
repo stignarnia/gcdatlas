@@ -5,6 +5,68 @@
      numbers with units. The newest version comes first and opens by itself; its number must match package.json (tests/smoke.mjs checks it).
      Every detail stays in docs/CHANGELOG.md, which the panel links to. -->
 
+## 0.19.0 · 8 Oct 2026 · Six more cities
+- Hong Kong, San Francisco, Sydney, Rome, Los Angeles and Rio de Janeiro in 3D, in the same model style, with their traffic, planes, boats, local time and real weather.
+- Their landmarks in their real shapes and sizes: the Golden Gate Bridge, the Sydney Opera House, the Colosseum, St Peter's, the Hollywood sign and Christ the Redeemer.
+
+## 0.18.0 · 8 Oct 2026 · Star clusters from their real stars
+- 19 more Messier objects: the Little Dumbbell, the reflection nebula M78, the Sagittarius Star Cloud and sixteen open clusters, from the Butterfly Cluster to M67, one of the oldest known.
+- Every open cluster is now drawn from its real stars, measured by the Gaia space telescope: each one where it really is on the sky, as bright and as coloured as it really is.
+- The Messier marathon tour grows to 54 stops. 57 of Messier's 110 objects are in so far.
+
+## 0.17.2 · 8 Oct 2026 · Lighter link previews
+- When a gcdatlas link is shared in a chat or a post, the app that draws its preview now gets a 2 KB page with the title and picture, not the whole 2.5 MB atlas.
+- Nothing changes for you: anyone who opens the link gets the full atlas, as before.
+
+## 0.17.1 · 7 Oct 2026 · Counting visits, privately
+- Visits are now counted with Vercel Web Analytics, so we can see how many people explore the atlas.
+- No cookies, and nothing is saved on your device. A visit sends the page's address (not the place you are looking at), the site you came from, your country, browser and kind of device.
+- Nothing is sent if your browser asks sites not to track you (Global Privacy Control or Do Not Track).
+
+## 0.17.0 · 4 Oct 2026 · Cities you can read, alive from afar
+- The five cities in a new style, like an architect's model: every building in one clean colour from the city's real roofs (Paris zinc and slate, London slate and clay tile, Tokyo concrete), outlined, on darker streets.
+- Traffic shows from 15 km: streams of white and red lights along the main roads at night, moving dashes by day.
+- Planes are easy to spot: shaped like planes, flying in over the city, with a small label such as "landing at Heathrow". Airliners passing high overhead leave white trails by day.
+
+## 0.16.0 · 4 Oct 2026 · Twenty Messier objects and a Messier marathon
+- 20 famous objects from Charles Messier's catalogue: the Dumbbell, Owl, Trifid and Omega nebulae, the Beehive and Wild Duck clusters, the globular clusters M3, M4 and M22, and ten galaxies, among them the Sunflower, the Black Eye, the Phantom and the Leo Triplet.
+- A new tour, the Messier marathon: every Messier object in the atlas, in the order observers find them on one night in March.
+- The atlas now works through two public lists, Messier's 110 and the Caldwell 109. So far 38 of the Messier objects are in, with more to come.
+- Search any of them by number, like M27 or NGC 6853.
+
+## 0.15.0 · 4 Oct 2026 · Famous places in 3D
+- 30 famous places on Earth in 3D from real satellite images and heights: Everest, the Grand Canyon, the Alps, Kilimanjaro, Fuji, the Sahara's Richat Structure, the Amazon, Uluru, the Great Barrier Reef, Hawaii, Iceland, Antarctica, Greenland, the Palm, the Panama Canal, the Great Wall, Giza and more.
+- Find them in the atlas under "on Earth" (a new kind: built by people), by their marks on the globe, or by any of their names in the search.
+- Each one opens close enough to know it, then goes wide and closer, by day with the Sun to the side so the mountains stand out.
+- A new tour, wonders of Earth, flies to all 30, west round the world.
+
+## 0.14.0 · 4 Oct 2026 · The cities come alive
+- Traffic on the real roads of all five cities: headlights and red tail lights at night, busier at rush hour, on the side of the road each city drives on. By day the cars are small specks.
+- Planes land and take off at the 14 real airports, on the runways that face into the real wind. They are simulated, not live flights.
+- Boats on the Seine, the Thames, New York harbour, Tokyo Bay and Dubai Creek, along the real ferry routes.
+- Tokyo Tower and the Skytree in their real shapes and colours. At night Tokyo Tower glows orange and the Skytree blue or purple.
+
+## 0.13.0 · 4 Oct 2026 · Five cities in 3D, real clouds
+- New York, Tokyo, Dubai, London and Paris stand up in 3D, in the colours of their buildings: Paris stone and zinc roofs, New York brick and glass, London brick and Portland stone. Each opens on a landmark, with warning lights on the towers, local time and real weather. At night your eyes adjust and the city glows.
+- The Eiffel Tower in its real shape and size: four curved legs, the arches, three floors and the antenna. At night it glows gold, and sparkles for 5 minutes on the hour.
+- Find places on Earth as you go: famous places are marked on the globe (click one), and scrolling in close to Earth takes you down to the nearest one.
+- Near the ground it moves like Google Earth: drag to move over it, scroll toward a spot, right-drag to turn and tilt, W A S D to glide.
+- The clouds are real: NASA's satellite picture of a recent day, over the whole Earth.
+
+## 0.12.0 · 3 Oct 2026 · Fly down anywhere on Earth
+- Places on Earth: open the atlas and pick "on Earth" for famous mountains, deserts, islands, seas and cities, or search any of about 32,000 cities and the highest mountains by name. Pick one and the camera flies down to it.
+- Mountains stand up in 3D wherever you fly low, from real heights of the land, not only at the launch sites.
+- Up close, Earth is four times sharper (about 2.4 km a pixel), and you can zoom down to about 330 km above it.
+- The atlas is easier to find your way in: each kind has its own colour, on its button, its heading and its rows.
+- Mountains are shown by day. A city keeps the time, so at night you see its lights.
+
+## 0.11.0 · 3 Oct 2026 · The real Earth from space
+- Earth now shows its real colours from NASA's Blue Marble, with deserts, forests, ice and the shallow seas as satellites see them.
+- The seasons change with the date the atlas shows: snow spreads across the north in winter and forests green up in spring. Run the time machine to watch a year go by.
+- Mountains catch the low Sun at dawn and dusk, from real heights of the land.
+- Sharper city lights at night, from NASA's Black Marble.
+- The real maps load only when Earth is near, so the page still opens as fast as before.
+
 ## 0.10.2 · 1 Oct 2026 · The Halo tour, at the tour's pace
 - The Halo tour now spends about 40 s at each place, like the normal tour.
 - The Halo arrives straight into its move: through Saturn's rings, through a star's corona, weaving through a nebula. Now and then it arrives on a job instead.

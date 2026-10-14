@@ -31,7 +31,7 @@ const d = { launchReal:false, detail:1, detailAuto:true, travel:reduceMotion ? '
 // Override per visitor with ?flags=name,-other in the URL (for that visit only) or localStorage 'gcdatlas.flags'. See docs/FEATURE_FLAGS.md.
 // (a link someone else shares must not change your settings for good, so URL flags are not saved; only known flag names count)
 const FLAGS = (() => {
-  const f = { live:true, launches:true, planes:true, backyard:true, earthStory:true, social:false, spacex:true };
+  const f = { live:true, launches:true, planes:true, backyard:true, earthStory:true, social:false, spacex:true, realEarth:true, analytics:true };
   try { const saved = JSON.parse(localStorage.getItem('gcdatlas.flags') || '{}'); for (const k of Object.keys(f)) if (typeof saved[k] === 'boolean') f[k] = saved[k]; } catch (e) {}
   const q = URLQ.get('flags');
   if (q){ for (const s of q.split(',')){ const k = s.replace(/^[-+]/, ''); if (Object.hasOwn(f, k)) f[k] = !s.startsWith('-'); } }

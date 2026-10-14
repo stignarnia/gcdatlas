@@ -5,6 +5,25 @@
 const FS_EARTH = COMMON + '#ifdef ED_ON\n#define ED_N 2\n' + ED_GLSL + '#endif\n' + `
 const float RP = 0.893;
 uniform sampler2D uTex2;
+// the real Earth (e5-earth-global.js): NASA's Blue Marble of two months (uEgC0, uEgC1), and a data map uEgD (r the land's height, about
+// 8848 m x r^2; g the night lights; b the sea's depth; a 1 on land, 0.25 at sea). uEg: x how far it has faded in (0: the painted map),
+// y the blend toward the second month, z how much the relief is raised for the light, w the maps' level of detail
+// (only in the copies with EG_ON, compiled in the background once Earth is near: P.earth, compiled at start-up, stays as quick as before)
+#ifdef EG_ON
+uniform sampler2D uEgC0; uniform sampler2D uEgC1; uniform sampler2D uEgD; uniform vec4 uEg;
+// the finer tiles (e7-earth-tiles.js): uEtC the detail of January and July (layers 2 x slot and 2 x slot + 1, the ratio to the global map of
+// their month, 0.5 + log2(ratio)/4), uEtD the data (as uEgD), uEtI the index (r slot + 1, g how far the tile has faded in, b its season:
+// 0 January's detail, 1 July's), uEt: x 1 while any tile is in, y z the tiles across and down, w a tile texel at the equator (m)
+precision highp sampler2DArray;
+uniform sampler2DArray uEtC; uniform sampler2DArray uEtD; uniform sampler2D uEtI; uniform vec4 uEt;
+// the real clouds (e5c-earth-clouds.js): NASA GIBS's true-colour picture of a recent day; cloud is what is white in it, less where the month's
+// Blue Marble is white too (snow and ice); uCl.x how far it has faded in (0: the made-up clouds)
+uniform sampler2D uClT; uniform vec4 uCl;
+float cloudReal(vec2 uv, float lod){
+  vec3 s = textureLod(uClT, uv, lod).rgb; vec3 b = textureLod(uEgC0, uv, lod + 1.).rgb;
+  return smoothstep(0.42, 0.85, min(s.r, min(s.g, s.b)))*(1. - 0.85*smoothstep(0.45, 0.75, min(b.r, min(b.g, b.b))));
+}
+#endif
 vec2 euv(vec3 n){ float lat = asin(clamp(n.y, -1., 1.)), lon = atan(-n.z, n.x); return vec2(lon*0.15915494 + 0.5, 0.5 - lat*0.31830989); }
 vec4 etex(vec3 n, float lod){ return textureLod(uTex, euv(n), lod); }
 float clouds(vec3 n, float t){
@@ -81,6 +100,51 @@ void main(){
     float mu = max(dot(n, -d), 0.), sdot = dot(n, L), day = smoothstep(-0.08, 0.12, sdot), dif = max(sdot, 0.);
     vec3 ocean = mix(vec3(0.02, 0.075, 0.2), vec3(0.04, 0.24, 0.32), coast*0.8);
     vec3 surf = mix(ocean, landCol(n, lat, tx.g)*1.7, land);
+    // the real Earth over the painted map once its maps are loaded: the colours of the month as light (as edLin turns the launch sites'
+    // photos into light, so the two match), the coast from Natural Earth, and the relief lit by the Sun (raised uEg.z times: at 10 km a
+    // pixel even the Himalaya slope a few degrees)
+    float egk = 0.; vec4 egd = vec4(0.);
+#ifdef EG_ON
+    egk = uEg.x;
+    if(egk > 0.001){
+      vec2 uv = euv(n); float el = uEg.w;
+      vec3 bm = mix(textureLod(uEgC0, uv, el).rgb, textureLod(uEgC1, uv, el).rgb, uEg.y);
+      egd = textureLod(uEgD, uv, el);
+      // (the lights a level and a half sharper than the rest, as the painted map's: in characters a town reads as a point, not a smudge)
+      egd.g = textureLod(uEgD, uv, max(el - 1.5, 0.)).g;
+      // (the relief: the height's slope east and north, from the neighbouring texels)
+      vec2 ts = exp2(el)/vec2(textureSize(uEgD, 0));
+      float h0 = egd.r*egd.r, hE = textureLod(uEgD, uv + vec2(ts.x, 0.), el).r, hN = textureLod(uEgD, uv - vec2(0., ts.y), el).r;
+      vec2 g = vec2((hE*hE - h0)/max(cos(lat), 0.08), hN*hN - h0)*8.848/(40075.*ts.x);
+      // the finer tiles where one is in and a pixel covers less than two of its texels: the month's colour times the tile's detail (of the
+      // season), its heights, lights and coast
+      if(uEt.x > 0.5){
+        vec2 tc = uv*uEt.yz; vec4 ix = texelFetch(uEtI, ivec2(clamp(floor(tc), vec2(0.), uEt.yz - 1.)), 0);
+        float w = ix.g*clamp(2. - hs.x*uPix*7.1344e6/max(mu, 0.25)/uEt.w, 0., 1.);
+        if(ix.r > 0. && w > 0.001){
+          float sl = floor(ix.r*255. + 0.5) - 1., dx = 1./float(textureSize(uEtD, 0).x); vec2 f = clamp(fract(tc), 0.5*dx, 1. - 0.5*dx);
+          vec3 r = mix(textureLod(uEtC, vec3(f, sl*2.), 0.).rgb, textureLod(uEtC, vec3(f, sl*2. + 1.), 0.).rgb, ix.b);
+          bm = mix(bm, max((bm + 0.00784)*exp2((r - 0.5)*4.) - 0.00784, 0.), w);
+          vec4 td = textureLod(uEtD, vec3(f, sl), 0.);
+          float t0 = td.r*td.r, tE = textureLod(uEtD, vec3(min(f.x + dx, 1.), f.y, sl), 0.).r, tN = textureLod(uEtD, vec3(f.x, max(f.y - dx, 0.), sl), 0.).r;
+          // (the slopes over 2.4 km are steeper than over 10: raised 1.4 times, not 7, or every slope away from a low Sun went black)
+          g = mix(g, vec2((tE*tE - t0)/max(cos(lat), 0.08), tN*tN - t0)*8.848/(uEt.w*0.001)*0.2, w);
+          egd = mix(egd, td, w);
+        }
+      }
+      float lE = smoothstep(0.4, 0.8, egd.a);
+      // (gentler than the launch sites' edLin: its curve turned forests nearly black, and from space the Amazon and the taiga vanished
+      // into the sea; this keeps the deep sea as dark as the painted one and deserts as bright)
+      vec3 real = pow(bm, vec3(1.2))*1.9;
+      // (shallow seas a little deeper in tone, so the coast stays a clear edge in characters; their colour still shows)
+      real = mix(real, real*vec3(0.62, 0.7, 0.85), (1. - smoothstep(0.4, 0.8, egd.a))*smoothstep(0.12, 0.35, dot(real, vec3(0.3, 0.5, 0.2))));
+      surf = mix(surf, real, egk); land = mix(land, lE, egk);
+      g *= uEg.z*lE;
+      vec3 eE = normalize(cross(vec3(0., 1., 0.), n) + vec3(1e-6, 0., 0.)), eN = cross(n, eE);
+      vec3 nr = normalize(n - eE*g.x - eN*g.y);
+      dif = mix(dif, max(dot(nr, L), 0.)*smoothstep(-0.02, 0.06, sdot), egk);
+    }
+#endif
     // round the launch sites, real images of the ground (Sentinel-2 and aerial photos, e3-earth-detail.js) replace the painted land and sea
     // (only in P.earthEd, the copy used near a site whose images are loaded: the one drawn at start-up compiles as quickly as before)
 #ifdef ED_ON
@@ -107,14 +171,17 @@ void main(){
     vec2 sto = storms(n, t);
     float cl = max(clouds(n, t)*(1. - 0.75*sto.y), sto.x);
     // clouds cast soft shadows a little way from themselves
-    float cls = clouds(normalize(n + L*0.012), t);
+    float cls = clouds(normalize(n + L*0.012), t), realCl = 0.;
+#ifdef EG_ON
+    if(uCl.x > 0.001){ realCl = uCl.x; cl = mix(cl, cloudReal(euv(n), lod), realCl); cls = mix(cls, cloudReal(euv(normalize(n + L*0.012)), lod + 1.), realCl); }
+#endif
     vec3 lit = surf*dif*(1. - 0.55*cls)*1.25;
     vec3 hv = normalize(L - d); float gl = pow(max(dot(n, hv), 0.), 90.)*(1. - land)*(1. - cl);
     lit += vec3(1., 0.92, 0.75)*gl*1.6*dif;
     lit = mix(lit, vec3(0.96, 0.97, 1.)*(dif*1.15 + 0.01), cl);
     // city lights on the night side (NASA Black Marble), softened and dimmed by cloud: bright city cores burn whiter (LED, dense
     // lighting), suburbs and highways glow sodium orange
-    float city = textureLod(uTex2, euv(n), max(lod - 0.5, 0.)).r;
+    float city = mix(textureLod(uTex2, euv(n), max(lod - 0.5, 0.)).r, egd.g, egk);   // (the real map's lights: four times sharper on a desk)
     float lights = pow(city, 0.95)*(1. - day)*(1. - 0.7*cl)*uP0.z;
     vec3 lc = mix(vec3(1., 0.6, 0.26), vec3(1., 0.88, 0.7), smoothstep(0.35, 0.9, city));
     col = lit + lc*lights*2.6;
@@ -134,7 +201,8 @@ void main(){
         col = mix(col, vec3(0.45, 0.4, 0.34)*(dif + 0.02), box*0.18*fpatch*day*(1. - cl)); } }
     // lightning: a storm cloud lit from inside for a moment, a soft patchy glow about a hundred kilometres across rather than a
     // point of light, with a faint brighter core where the bolt is (only visible on the night side)
-    for(int i=0;i<6;i++){ vec4 f = uFlash[i]; if(f.w <= 0.) continue; float d = length(n - f.xyz); if(d > 0.06) continue;
+    // (with the real clouds, only where they are thick)
+    for(int i=0;i<6;i++){ vec4 f = uFlash[i]; f.w *= mix(1., smoothstep(0.45, 0.8, cl), realCl); if(f.w <= 0.) continue; float d = length(n - f.xyz); if(d > 0.06) continue;
       float cloudTop = 0.35 + 0.9*noise(n*150. + float(i)*3.1);
       col += vec3(0.72, 0.8, 1.)*f.w*(exp(-d*d/0.00035)*0.55*cloudTop + exp(-d*d/0.00003)*0.35)*(1. - 0.9*day); }
     if(era > 3.) col += vec3(1., 0.36, 0.08)*pow(noise(n*16. + t*0.02), 3.)*(era - 3.)*2.5;   // the magma ocean glows on its own
@@ -172,6 +240,13 @@ void main(){
 }`;
 P.earth = program(VS_RECT, FS_EARTH);
 P.earthEd = program(VS_RECT, FS_EARTH.replace('#version 300 es\n', '#version 300 es\n#define ED_ON\n'));
+P.earthG = program(VS_RECT, FS_EARTH.replace('#version 300 es\n', '#version 300 es\n#define EG_ON\n'));
+P.earthGEd = program(VS_RECT, FS_EARTH.replace('#version 300 es\n', '#version 300 es\n#define EG_ON\n#define ED_ON\n'));
+// which of Earth's four programs draws it: with the launch sites' images (ed, e3-earth-detail.js) and with the real Earth's maps (eg,
+// e5-earth-global.js), each copy only once it has compiled in the background, else the nearest plainer one
+const EARTH_PR = { ed:false, eg:false };
+function earthProgPick(){ const { ed, eg } = EARTH_PR, want = eg && ed ? P.earthGEd : eg ? P.earthG : ed ? P.earthEd : P.earth;
+  earth.prog = progReady(want) ? want : eg && progReady(P.earthG) ? P.earthG : ed && progReady(P.earthEd) ? P.earthEd : P.earth; }
 loadTex('earth', EARTH_PNG); loadTex('lights', LIGHTS_PNG);
 loadTex('mw', MW_PNG);
 const earth = (() => {
@@ -264,7 +339,7 @@ const earth = (() => {
   sats.upload('ac');
   const o = addObj({ key:'earth', name:'Earth', label:'Earth', type:'rocky planet · home', group:'solar', sortKey:1,
     fact:'The only world known to have life. Real coastlines, weather systems pushed by the trade winds and westerlies, city lights on the night side and auroras over the poles.',
-    parent:sun, offset:planetPos(PLANET_EL.earth, JD_NOW), rad:R*bound, solid:0.893, R0:poleFrame(0, 90), prog:P.earth, tex:'earth', tex2:'lights', minZoom:1.035, pxMin:5, farColor:[0.55, 0.7, 1], farLum:0.9, labelRange:2e-3,
+    parent:sun, offset:planetPos(PLANET_EL.earth, JD_NOW), rad:R*bound, solid:0.893, R0:poleFrame(0, 90), prog:P.earth, tex:'earth', tex2:'lights', minZoom:0.94, pxMin:5, farColor:[0.55, 0.7, 1], farLum:0.9, labelRange:2e-3,
     distEarth:'home', aka:'home world planet blue marble',
     // tours play three of the angles (day side, the horizon up close, the night side with its city lights): about 30 s instead of a minute
     tourViews:[0, 2, 1],

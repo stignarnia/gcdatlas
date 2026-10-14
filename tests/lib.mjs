@@ -12,7 +12,8 @@ export const OUT = path.join(ROOT, 'tests', 'out');
 // frames of real, machine-dependent length slip in between two steps of a test
 // settings: saved settings to start with; init: a function run in the page before its scripts
 // query: added to the page address (for example '?wallpaper=1')
-export async function openPage({ width = 1280, height = 800, phone = false, fade = false, now = null, freeze = false, settings = null, init = null, query = '' } = {}){
+// url: over http, for what loads only there, such as the Earth's images: tests/earth.mjs
+export async function openPage({ width = 1280, height = 800, phone = false, fade = false, now = null, freeze = false, settings = null, init = null, url = null, query = '' } = {}){
   if (!fs.existsSync(path.join(ROOT, 'dist', 'index.html'))) throw new Error('build first: node build.mjs');
   const browser = await chromium.launch({ args:['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
   const context = await browser.newContext(phone ? { viewport:{ width:390, height:844 }, deviceScaleFactor:2, isMobile:true, hasTouch:true } : { viewport:{ width, height } });
@@ -24,7 +25,7 @@ export async function openPage({ width = 1280, height = 800, phone = false, fade
   // compile shaders synchronously and keep full quality, so screenshots are deterministic; skip the daily card
   await page.addInitScript(({ fade, freeze, day, settings }) => { window.__noAdapt = true; window.__syncCompile = true; if (freeze) window.__freeze = true; try { localStorage.setItem('gcdatlas.dailySeen', JSON.stringify(day)); if (!fade || settings) localStorage.setItem('gcdatlas.settings', JSON.stringify({ ...(fade ? {} : { fadeUI:'off' }), ...settings })); } catch (e) {} }, { fade, freeze, day:new Date(now ?? Date.now()).toISOString().slice(0, 10), settings });
   if (init) await page.addInitScript(init);
-  await page.goto(PAGE + query);
+  await page.goto((url || PAGE) + query);   // (url: over http, for what loads only there, such as the Earth's images: tests/earth.mjs)
   await page.waitForFunction(() => window.__cosmos && window.__cosmos.OBJ, null, { timeout:60000 });
   return { browser, page, errors };
 }

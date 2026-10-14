@@ -454,6 +454,330 @@ P.sxSmoke = program(VS_RECT, FS_SX_SMOKE);
 // uP3 = plume light: position (m), strength;  uP4 = time, the height of the pad above the sea (m), 0, ZI (0)
 const FS_SX_ENV = COMMON + '#define ED_GRAD\n' + ED_GLSL + CLOUD_GLSL + `
 const float RE = 6371000.;
+uniform vec4 uTwL[16]; uniform float uTwLN;   // (a city's tower lights: e9c-earth-cities.js)
+// (a city's slender towers, too thin for its height images (the Eiffel Tower, Tokyo Tower, the Skytree...): uThin x y its foot in this frame
+// (x, z), z the ground there (m above the sea), w its height; uThinB x the half-width of its foot, y 1 for a straight shaft, 0 a tapering
+// lattice. THIN: whether the last height asked for was one of them)
+uniform vec4 uThin[4]; uniform vec4 uThinB[4]; uniform float uThinN;
+float THIN = 0.;
+#ifdef CITY
+// the traffic (0.14.0, e9t-earth-traffic.js), in the cities' copies of this shader only (P.sxEnvC, and Paris's P.sxEnvEf): the road maps
+// (uRd0 near: 8 km round the camera; uRd1 far: the city, 48 km) and their numbers (uRdN: the near map's centre, m east and north of the
+// city's centre, its half-size, the far map's half-size; uRdT: how busy 0..1 (-1: no maps), the side of the road (1 right, -1 left), the
+// cars' clock (s))
+uniform sampler2D uRd0; uniform sampler2D uRd1; uniform vec4 uRdN; uniform vec4 uRdT;
+// the road at en (m east, north of the city's centre): x the direction of travel (radians), y the offset across from its centre line (m, +
+// to the right of x), z lanes, w class*2 + one-way, + 16 on a bridge; y < -900: none. fp: the size of a pixel on the ground (m)
+vec4 roadAt(vec2 en, float fp){
+  if(uRdT.x < -0.5) return vec4(0., -999., 0., 0.);
+  vec2 q0 = (en - uRdN.xy)/(2.*uRdN.z) + 0.5, q1 = en/(2.*uRdN.w) + 0.5, c; vec4 r; ivec2 i, s;
+  float R = 40.;   // (the offset's range: 40 m on the near map, 100 m on the far one, whose roads are padded wider: e9t-earth-traffic.js)
+  if(fp < 8. && q0 == clamp(q0, 0.001, 0.999)){ s = textureSize(uRd0, 0); i = ivec2(q0*vec2(s)); r = texelFetch(uRd0, i, 0); c = uRdN.xy + ((vec2(i) + 0.5)/vec2(s) - 0.5)*2.*uRdN.z; }
+  else if(q1 == clamp(q1, 0.001, 0.999)){ s = textureSize(uRd1, 0); i = ivec2(q1*vec2(s)); r = texelFetch(uRd1, i, 0); c = ((vec2(i) + 0.5)/vec2(s) - 0.5)*2.*uRdN.w; R = 100.; }
+  else return vec4(0., -999., 0., 0.);
+  if(r.a < 0.3) return vec4(0., -999., 0., 0.);
+  float th = r.r*6.2831853, b = floor(r.b*255. + 0.5); vec2 t = vec2(cos(th), sin(th));
+  return vec4(th, (r.g - 0.5)*2.*R + dot(en - c, vec2(t.y, -t.x)), floor(b/16.), mod(b, 16.) + (r.a < 0.8 ? 16. : 0.));
+}
+// the cars on that road at en: rgb the light of their lamps (white coming toward the camera, red going away; dv: the view's direction on the
+// ground), a how much of the pixel a car's body covers by day, its colour in body. Each lane's cars sit in cells of length L (shorter when
+// busy), most cells with one car, moving at a speed for the road's class, slower on the big roads at rush hour; up close each is a dot, far
+// off the lane's average light
+vec4 cars(vec2 en, vec4 rd, float fp, vec2 dv, out vec3 body){
+  body = vec3(0.5);
+  float lanes = max(rd.z, 1.), w = mod(rd.w, 16.), cls = floor(w/2.), one = mod(w, 2.), hw = lanes*1.65, ac0 = rd.y;
+  // (far off, the big roads (motorway, trunk, primary) carry streams of cars drawn larger than life, so the traffic shows from 15 km: the road
+  // drawn at least a pixel and a half wide, the cars spaced about six pixels apart and moving as many pixels a second; owner's pick, 0.17.0)
+  float far = smoothstep(2.5, 6., fp)*step(cls, 2.5), hwE = mix(hw, clamp(fp*0.8, hw, 90.), far);
+  if(abs(ac0) > hwE + 0.6) return vec4(0.);
+  float ac = ac0*hw/hwE;   // (the lane it falls in, as on the road at its real width)
+  vec2 t = vec2(cos(rd.x), sin(rd.x));
+  float sg = one > 0.5 ? 1. : (ac*uRdT.y > 0. ? 1. : -1.);
+  float li = one > 0.5 ? floor((ac + hw)/3.3) : floor(abs(ac)/3.3), lc = one > 0.5 ? (li + 0.5)*3.3 - hw : sign(ac)*(li + 0.5)*3.3;
+  float busy = uRdT.x, v = (cls < 0.5 ? 27. : cls < 1.5 ? 20. : cls < 2.5 ? 13. : 11.)*(1. - 0.55*smoothstep(0.75, 1., busy)*step(cls, 1.5));
+  float L0 = mix(95., 15., busy)*(cls < 1.5 ? 0.85 : 1.15), L = mix(L0, max(L0, fp*6.), far);
+  float u = dot(en, t) - sg*v*(L/L0)*uRdT.z, lineC = dot(en, vec2(t.y, -t.x)) - ac0;
+  vec2 key = vec2(floor(rd.x*24.) + li*7.3 + sg*3.1, floor(lineC*0.5));
+  float cell = floor(u/L), r = max(1.6, fp*0.9), da = (ac - lc)*mix(1., hwE/hw, far)*mix(1., 0.4, far), g = 0., hb = 0.;   // (at least a pixel across: smaller, most fell between the pixels)
+  for(int j=0;j<3;j++){   // (three cars: this cell's and its neighbours'; ZI is declared further down)
+    float cc = cell + float(j - 1), hh = hash12(key + cc*vec2(1.7, 3.1));
+    if(fract(hh*13.7) < 0.85){ float du = u - (cc + 0.1 + 0.8*hh)*L, e = exp(-(du*du + 2.*da*da)/(r*r)); if(e > g){ g = e; hb = fract(hh*41.3); } }
+  }
+  body = hb < 0.3 ? vec3(0.92) : hb < 0.5 ? vec3(0.1) : hb < 0.75 ? vec3(0.7, 0.71, 0.73) : hb < 0.83 ? vec3(0.72, 0.1, 0.08) : hb < 0.92 ? vec3(0.15, 0.25, 0.55) : vec3(0.32);
+  // (a lamp is a point of light: it stays bright as it shrinks to a pixel, then the lane's average light takes over)
+  float k = smoothstep(0.35, 0.9, fp/L)*(1. - far), I = mix(mix(g*min(2.56/(r*r)*4., 1.), g*1.3, far), 0.85*3.8*32./(L*max(3.3, fp)), k);
+  vec3 lamp = mix(vec3(1., 0.93, 0.8)*1.8, vec3(1., 0.12, 0.06)*1.3, smoothstep(-0.25, 0.25, dot(sg*t, dv)));
+  body = mix(body, vec3(1., 0.92, 0.55), 0.35*far);   // (far off by day, brighter and warmer, so the moving dashes read against the dark road)
+  return vec4(lamp*I, g*mix(min(6.25/(r*r), 1.), 1., far)*(1. - k)*0.85);
+}
+#endif
+#ifdef LM
+// the landmarks of the cities of 0.19.0 as models (owner's picks, 2026-10-07: the Golden Gate Bridge, the Sydney Opera House, the Colosseum and
+// St Peter's, the Hollywood sign, Christ the Redeemer), each in the copy of this shader used near its city (P.sxEnvSF, P.sxEnvSyd,
+// P.sxEnvRome, P.sxEnvLA, P.sxEnvRio, built in the background), as the Eiffel Tower and Tokyo's towers are. Real sizes, in their sources'
+// comments; the finer shapes (the sails' curves, the arches, the letters' strokes, the statue's robe) are illustrative. uLm0 / uLm1: each
+// landmark's foot (x, z in this frame), the ground there (m above the sea), the turn of its own frame (its x along the bridge, the sign or the
+// building's axis, its z toward the front); uLm2: the lights (0..1), a clock (s), how many landmarks (1 or 2), 0. Each city's lmBounds(k)
+// (half-length in x, y from, y to, half-width in z) and lmMap(p, k) (the distance, in m) and lmBase(q, n, k, px, glow) (the colour in full
+// sunlight, and how much of its night lighting shows)
+uniform vec4 uLm0; uniform vec4 uLm1; uniform vec4 uLm2;
+float lmBox(vec3 p, vec3 c, vec3 b){ vec3 q = abs(p - c) - b; return length(max(q, 0.)) + min(max(q.x, max(q.y, q.z)), 0.); }
+float lmCap(vec3 p, vec3 a, vec3 b, float r){ vec3 pa = p - a, ba = b - a; float h = clamp(dot(pa, ba)/dot(ba, ba), 0., 1.); return length(pa - ba*h) - r; }
+float lmSeg(vec2 p, vec2 a, vec2 b){ vec2 pa = p - a, ba = b - a; float h = clamp(dot(pa, ba)/dot(ba, ba), 0., 1.); return length(pa - ba*h); }
+vec3 lmRot(vec3 v, float a){ float c = cos(a), s = sin(a); return vec3(c*v.x + s*v.z, v.y, -s*v.x + c*v.z); }
+#endif
+#ifdef LM_SF
+// the Golden Gate Bridge (Golden Gate Bridge, Highway and Transportation District): towers 227 m above the water and 1,280 m apart, the roadway
+// 67 m up and 27 m wide, side spans of 343 m to the anchorages, the main cables sagging from the towers' tops to just above the roadway in the
+// middle; x along the bridge from its middle, z across. International Orange, its towers floodlit at night
+vec4 lmBounds(float k){ return vec4(1300., -2., 232., 26.); }
+float ggCable(float x){ float ax = abs(x); if(ax < 640.){ float u = x/640.; return 72. + 155.*u*u; } float s = clamp((ax - 640.)/343., 0., 1.); return 227. - 152.*s - 34.*s*(1. - s); }
+float lmMap(vec3 p, float k){
+  float ax = abs(p.x), d = lmBox(p, vec3(0., 65., 0.), vec3(1290., 3., 13.7));   // (the roadway)
+  vec3 q = vec3(ax - 640., p.y, abs(p.z) - 17.);
+  d = min(d, lmBox(q, vec3(0., 113.5, 0.), vec3(mix(6.5, 4., clamp(p.y/227., 0., 1.)), 113.5, 4.5)));   // (each tower's two legs, tapering)
+  float sy = p.y < 85. ? 40. : p.y < 128. ? 105. : p.y < 170. ? 150. : p.y < 206. ? 190. : 222.;   // (the nearest of the struts between them)
+  d = min(d, lmBox(vec3(ax - 640., p.y, p.z), vec3(0., sy, 0.), vec3(3., 3.5, 17.)));
+  if(ax < 990.){   // (the two main cables, about 0.9 m thick: the distance to each curve, its height difference eased by the slope)
+    float sl = ax < 640. ? 0.484*ax/640. : 0.5;
+    d = min(d, length(vec2((p.y - ggCable(p.x))/sqrt(1. + sl*sl), abs(p.z) - 15.)) - 0.6);
+  }
+  d = min(d, lmBox(vec3(ax, p.y, p.z), vec3(995., 34., 0.), vec3(18., 34., 22.)));   // (the anchorages)
+  return d*0.9;
+}
+vec3 lmBase(vec3 q, vec3 n, float k, float px, out float glow){
+  float deck = step(0.7, n.y)*step(abs(q.y - 68.), 1.5)*step(abs(q.z), 13.);
+  glow = deck > 0.5 ? 0.12 : step(abs(abs(q.x) - 640.), 9.)*0.55 + 0.12;   // (the towers floodlit, the roadway's lamps)
+  return deck > 0.5 ? vec3(0.3, 0.3, 0.32) : vec3(0.8, 0.28, 0.14);
+}
+#endif
+#ifdef LM_SYD
+// the Sydney Opera House (Sydney Opera House Trust): its sails rise to 67 m above the sea, two halls side by side and a pair over the restaurant,
+// on a podium about 10 m high; x along its long axis toward the harbour, z across. The sails as curved shells over the halls (their tiles white,
+// the glass of their mouths dark), floodlit at night
+vec4 lmBounds(float k){ return vec4(100., -2., 70., 64.); }
+float osSail(vec2 xz, vec4 a, vec2 b){   // a: the mouth's x, the hall's z, which way the mouth faces (+1 toward +x), the height above the podium; b: length, half-width
+  float u = a.z*(xz.x - a.x)/b.x, zz = abs(xz.y - a.y)/(b.y*(0.8 + 0.4*clamp(u, 0., 1.)));
+  if(u < -0.02 || u > 1. || zz > 1.) return 0.;
+  return a.w*pow(max(1. - u, 0.), 0.7)*pow(max(1. - zz, 0.), 0.55);
+}
+float osH(vec2 xz){
+  float H = osSail(xz, vec4( 40., -22.,  1., 42.), vec2(32., 21.));   // (the Concert Hall: two sails facing the harbour, two facing the steps)
+  H = max(H, osSail(xz, vec4(  8., -22.,  1., 57.), vec2(42., 24.)));
+  H = max(H, osSail(xz, vec4(-30., -22., -1., 44.), vec2(30., 22.)));
+  H = max(H, osSail(xz, vec4(-58., -22., -1., 24.), vec2(16., 17.)));
+  H = max(H, osSail(xz, vec4( 36.,  24.,  1., 36.), vec2(28., 18.)));   // (the Joan Sutherland Theatre)
+  H = max(H, osSail(xz, vec4(  6.,  24.,  1., 50.), vec2(38., 21.)));
+  H = max(H, osSail(xz, vec4(-28.,  24., -1., 38.), vec2(27., 19.)));
+  H = max(H, osSail(xz, vec4(-54.,  24., -1., 20.), vec2(14., 15.)));
+  H = max(H, osSail(xz, vec4(-80., -38., -1., 20.), vec2(14., 11.)));   // (the restaurant's pair)
+  return max(H, osSail(xz, vec4(-68., -38.,  1., 16.), vec2(12., 9.)));
+}
+float lmMap(vec3 p, float k){
+  float pod = lmBox(p, vec3(-12., 5., -4.), vec3(84., 5., 56.));
+  return min(pod, max(max((p.y - 10. - osH(p.xz))*0.4, 10. - p.y), lmBox(p, vec3(-10., 40., -4.), vec3(90., 30., 60.))));
+}
+vec3 lmBase(vec3 q, vec3 n, float k, float px, out float glow){
+  glow = q.y > 10.5 ? 0.6 : 0.1;
+  if(q.y < 10.5) return vec3(0.74, 0.62, 0.54);   // (the podium's pink granite)
+  if(abs(n.x) > 0.75 && n.y < 0.35) return vec3(0.28, 0.25, 0.22);   // (the glass in the sails' mouths)
+  float tl = step(0.12, fract(q.y*0.9 + q.z*0.15));
+  return mix(vec3(0.95, 0.94, 0.9), vec3(0.88, 0.86, 0.8), (1. - tl)*smoothstep(1.2, 0.3, px));   // (the white and cream tiles)
+}
+#endif
+#ifdef LM_ROME
+// the Colosseum (k 0): an oval 189 by 156 m, its outer wall 48 m high where it stands (the north side) and only the second ring, about 31 m,
+// on the south; the seating sloping down to the arena; three tiers of 80 arches and the attic above. St Peter's Basilica (k 1): the nave,
+// transept, apse and the facade (115 m wide, 46 m high), the drum and the dome, 136.6 m to the top of its cross (Fabbrica di San Pietro);
+// x toward the facade (east), the dome at the origin. Travertine, the dome lead grey; both floodlit at night
+vec4 lmBounds(float k){ return k < 0.5 ? vec4(99., -2., 50., 83.) : vec4(136., -2., 139., 74.); }
+float lmMap(vec3 p, float k){
+  if(k < 0.5){
+    float r = length(vec2(p.x/94.5, p.z/78.)), sc = 78., hO = mix(31., 48., smoothstep(12., -22., p.z));
+    float d = max(abs(r - 0.965)*sc - 2.8, p.y - hO);   // (the outer wall)
+    d = min(d, max(abs(r - 0.865)*sc - 2.8, p.y - 31.));   // (the second ring)
+    d = min(d, max(max(0.5 - r, r - 0.85)*sc, p.y - mix(4., 29., clamp((r - 0.5)/0.35, 0., 1.))));   // (the seating)
+    d = min(d, max(abs(r - 0.485)*sc - 1., p.y - 4.));   // (the arena's wall)
+    return max(d, -p.y - 1.)*0.8;
+  }
+  float d = lmBox(p, vec3(75., 22.5, 0.), vec3(48., 22.5, 30.));   // (the nave)
+  d = min(d, lmBox(p, vec3(0., 22.5, 0.), vec3(30., 22.5, 68.)));   // (the transept)
+  d = min(d, max(length(p.xz - vec2(-30., 0.)) - 30., abs(p.y - 22.5) - 22.5));   // (the apse)
+  d = min(d, lmBox(p, vec3(126., 23., 0.), vec3(5., 23., 57.)));   // (the facade)
+  d = min(d, max(length(p.xz) - 23., abs(p.y - 61.5) - 16.5));   // (the drum, 45 to 78 m)
+  d = min(d, max((length((p - vec3(0., 78., 0.))/vec3(21., 32., 21.)) - 1.)*21., 78. - p.y));   // (the dome)
+  d = min(d, max(length(p.xz) - 5., abs(p.y - 118.) - 9.));   // (the lantern)
+  d = min(d, max(length(p.xz) - max(3.4 - (p.y - 127.)*0.6, 0.3), abs(p.y - 130.) - 3.));
+  d = min(d, lmBox(p, vec3(0., 134.6, 0.), vec3(0.35, 2., 0.35)));   // (the cross)
+  vec2 md = vec2(p.x - 36., abs(p.z) - 46.);   // (the two smaller domes)
+  return min(d, max(length(vec3(md.x, (p.y - 52.)*0.8, md.y)) - 10., 44. - p.y))*0.9;
+}
+vec3 lmBase(vec3 q, vec3 n, float k, float px, out float glow){
+  glow = 0.5;
+  vec3 tr = vec3(0.86, 0.78, 0.62);
+  if(k < 0.5){
+    float r = length(vec2(q.x/94.5, q.z/78.)), th = atan(q.z/78., q.x/94.5), a = fract(th/6.2831853*80.), y = q.y;
+    // (on the outer faces, three tiers of arches and the attic's small windows: dark where a pixel resolves them)
+    float arch = step(0.2, a)*step(a, 0.8)*(step(1.5, y)*step(y, 8.5) + step(12., y)*step(y, 19.5) + step(23., y)*step(y, 30.) + step(37., y)*step(y, 39.)*step(0.4, a)*step(a, 0.6));
+    float out_ = step(0.9, r)*step(abs(n.y), 0.5);
+    if(n.y > 0.5 && r < 0.48) return vec3(0.5, 0.42, 0.34);   // (the arena's floor and the rooms under it)
+    return mix(tr, vec3(0.28, 0.24, 0.2), arch*out_*smoothstep(4., 1.5, px));
+  }
+  if(q.y > 78. && q.y < 112. && length(q.xz) < 22.) return mix(vec3(0.42, 0.47, 0.53), vec3(0.9, 0.88, 0.84), step(0.88, fract(atan(q.z, q.x)/6.2831853*16.))*smoothstep(3., 1., px));   // (the dome's dark lead and its white ribs: in a pale grey it vanished into an overcast sky)
+  return tr;
+}
+#endif
+#ifdef LM_LA
+// the Hollywood sign (Hollywood Sign Trust; OpenStreetMap maps each letter): nine white letters 13.7 m tall, each where OpenStreetMap puts
+// it, at its own width and angle, standing on the ground under it. They are not in a straight row: they step along the slope of Mount Lee,
+// up to 14 m apart front to back, the ground under them 25 m higher at the H than at the D. The frame is the OSM node's: x east, z south;
+// SL: each letter's middle (x, z), the bearing it runs toward (radians) and its width (m); uLmY: the ground under each, m above the node's
+// (from the drawn heights). Not lit at night. (0.19.0, round 2, owner: the sign was "messed up": one straight sign on the ground at its
+// middle had the H buried in the hill and the D in the air)
+uniform vec4 uLmY[3];
+const vec4 SL[9] = vec4[9](vec4(-47.2, 7.7, 1.5656, 9.6), vec4(-34.4, 11.0, 1.6354, 8.6), vec4(-21.9, 8.6, 1.4416, 9.1), vec4(-12.6, 7.0, 1.4102, 8.5),
+  vec4(-3.3, 5.7, 1.4155, 9.2), vec4(8.9, 0.9, 1.4085, 11.0), vec4(21.5, -0.7, 1.5202, 9.6), vec4(34.1, -2.7, 1.4783, 8.8), vec4(48.8, 1.7, 1.6057, 8.5));
+vec4 lmBounds(float k){ return vec4(60., -28., 34., 16.); }
+float hwGround(int i){ vec4 a = uLmY[i/4]; int r = i - (i/4)*4; return r == 0 ? a.x : r == 1 ? a.y : r == 2 ? a.z : a.w; }
+// one letter's distance in its own frame (q.x across it from its middle, q.y up from its foot), its glyph g (0 H, 1 O, 2 L, 3 Y, 4 W, 5 D)
+float hwGlyph(vec2 q, int g){
+  float d;
+  if(g == 0) d = min(min(lmSeg(q, vec2(-3.6, 0.), vec2(-3.6, 13.7)), lmSeg(q, vec2(3.6, 0.), vec2(3.6, 13.7))), lmSeg(q, vec2(-3.6, 6.9), vec2(3.6, 6.9)));
+  else if(g == 1) d = abs(length((q - vec2(0., 6.85))/vec2(3.7, 5.75)) - 1.)*3.7;
+  else if(g == 2) d = min(lmSeg(q, vec2(-3.4, 0.), vec2(-3.4, 13.7)), lmSeg(q, vec2(-3.4, 1.1), vec2(3.8, 1.1)));
+  else if(g == 3) d = min(min(lmSeg(q, vec2(-4., 13.7), vec2(0., 6.4)), lmSeg(q, vec2(4., 13.7), vec2(0., 6.4))), lmSeg(q, vec2(0., 6.4), vec2(0., 0.)));
+  else if(g == 4) d = min(min(lmSeg(q, vec2(-4.6, 13.7), vec2(-2.3, 0.)), lmSeg(q, vec2(-2.3, 0.), vec2(0., 9.))), min(lmSeg(q, vec2(0., 9.), vec2(2.3, 0.)), lmSeg(q, vec2(2.3, 0.), vec2(4.6, 13.7))));
+  else d = min(lmSeg(q, vec2(-3.4, 0.), vec2(-3.4, 13.7)), q.x > -3.4 ? abs(length((q - vec2(-3.4, 6.85))/vec2(7., 5.75)) - 1.)*5.6 : 1e4);
+  return d - 1.05;   // (strokes 2.1 m wide)
+}
+float lmMap(vec3 p, float k){
+  float best = 1e9;
+  for(int i=int(uLm2.w);i<9;i++){   // (uLm2.w is a 0 the compiler cannot see, so this stays a loop: ZI is declared further down)
+    vec4 L = SL[i]; vec2 dd = p.xz - L.xy, u = vec2(sin(L.z), -cos(L.z)), n = vec2(cos(L.z), sin(L.z));
+    float qx = dot(dd, u), qz = dot(dd, n), qy = p.y - hwGround(i), s = L.w/9.6;
+    float bx = length(max(abs(vec3(qx, qy - 6.85, qz)) - vec3(L.w*0.5 + 1.2, 6.85 + 1.2, 0.4), 0.));   // (a bound first: only the near letters are drawn in full)
+    if(bx > best) continue;
+    int g = i == 0 ? 0 : i == 1 || i == 6 || i == 7 ? 1 : i < 4 ? 2 : i == 4 ? 3 : i == 5 ? 4 : 5;
+    float d2 = hwGlyph(vec2(qx/s, qy), g)*min(s, 1.);
+    d2 = min(d2, max(min(abs(qx - L.w*0.27), abs(qx + L.w*0.27)) - 0.2, max(qy, -qy - 5.)));   // (two posts under each letter, down into the slope)
+    best = min(best, max(max(d2, abs(qz) - 0.3), max(qy - 13.7, -qy - 5.)));
+  }
+  return best;
+}
+vec3 lmBase(vec3 q, vec3 n, float k, float px, out float glow){ glow = 0.; return vec3(0.96, 0.96, 0.94); }
+#endif
+#ifdef LM_RIO
+// Christ the Redeemer (Santuario Cristo Redentor): 30 m tall on an 8 m pedestal, its arms 28 m across, on the top of Corcovado; x along its
+// arms, z the way it faces (east-northeast, over the city and the bay). Soapstone, floodlit at night
+vec4 lmBounds(float k){ return vec4(15.5, -1., 38.5, 6.); }
+float lmMap(vec3 p, float k){
+  float d = lmBox(p, vec3(0., 4., 0.), vec3(4.5, 4., 4.5));   // (the pedestal)
+  float y = clamp(p.y, 8., 31.), u = (y - 8.)/23., hw = mix(4.2, 2.8, u), hd = mix(3.1, 1.9, u);
+  d = min(d, max((length(vec2(p.x/hw, p.z/hd)) - 1.)*min(hw, hd), max(8. - p.y, p.y - 32.)));   // (the robe)
+  d = min(d, lmCap(p, vec3(-13.6, 31.4, 0.), vec3(13.6, 31.4, 0.), 1.1 + 1.1*smoothstep(9., 2., abs(p.x))));   // (the arms, the sleeves hanging near the body)
+  d = min(d, length((p - vec3(0., 35.6, 0.25))/vec3(1., 1.3, 1.)) - 1.8);   // (the head)
+  return d*0.85;
+}
+vec3 lmBase(vec3 q, vec3 n, float k, float px, out float glow){ glow = 0.85; return q.y < 8. ? vec3(0.62, 0.6, 0.56) : vec3(0.9, 0.9, 0.86); }
+#endif
+#ifdef TOKYO
+// Tokyo Tower and the Tokyo Skytree as models (0.14.0, owner's pick), only in P.sxEnvTk, the copy used near Tokyo. Real sizes: Tokyo Tower
+// 332.9 m, 80 m across at the ground, the Main Deck at 150 m and the Top Deck at 249.6 m (Wikipedia); the Skytree 634 m, a triangle 68 m a
+// side at the ground whose section turns round by about 300 m, the Tembo Deck at 340 to 350 m and the Tembo Galleria at 445 to 451 m
+// (tokyo-skytree.jp). The curves between, the lattices and Tokyo Tower's bands are illustrative. uTk0 / uTk1: each one's foot (x, z) in
+// this frame, the ground there (m above the sea), the turn of its faces; uTk2: Tokyo Tower's lights (0..1), the Skytree's (0..1), the
+// Skytree's style tonight (0 Iki, light blue; 1 Miyabi, purple), Tokyo Tower's (0 orange, its winter Landmark Light; 1 white, summer)
+uniform vec4 uTk0; uniform vec4 uTk1; uniform vec4 uTk2;
+float tkBox(vec3 p, vec3 c, vec3 b){ vec3 q = abs(p - c) - b; return length(max(q, 0.)) + min(max(q.x, max(q.y, q.z)), 0.); }
+vec3 tkRot(vec3 v, float a){ float c = cos(a), s = sin(a); return vec3(c*v.x + s*v.z, v.y, -s*v.x + c*v.z); }
+float ttW(float y){ return 3.5 + 36.5*exp(-y/100.); }   // (Tokyo Tower's half-width: 40 m at the ground, 11.6 at the Main Deck, 6.5 at the Top Deck)
+float skRc(float y){ return y < 300. ? mix(25.5, 16.5, y/300.) : max(16.5 - (y - 300.)*0.018, 12.); }   // (the Skytree's mean radius)
+// k 0: Tokyo Tower, 1: the Skytree; p in its own frame, m from its foot
+float tkMap(vec3 p, float k){
+  float y = p.y;
+  if(k < 0.5){
+    vec2 a = abs(p.xz); float w = ttW(clamp(y, 0., 252.)), m = max(a.x, a.y), n = min(a.x, a.y), wi = 27.*pow(max(1. - y/62., 0.), 1.2);
+    float d = max(max(m - w, wi - n)*0.8, max(-y, y - 252.));
+    d = min(d, tkBox(p, vec3(0., 148., 0.), vec3(15., 4.5, 15.)));
+    d = min(d, tkBox(p, vec3(0., 249.6, 0.), vec3(7.5, 2.6, 7.5)));
+    d = min(d, tkBox(p, vec3(0., 9., 0.), vec3(30., 9., 30.)));   // (FootTown, the building under its legs)
+    d = min(d, max(max(a.x, a.y) - mix(3.2, 1.1, clamp((y - 252.)/68., 0., 1.)), abs(y - 286.) - 34.)*0.9);
+    return min(d, max(length(p.xz) - 0.6, abs(y - 326.5) - 6.5));
+  }
+  // (the Skytree: a section blending from an equilateral triangle to a circle up to 300 m; the decks; the mast from 495 m)
+  float rc = skRc(clamp(y, 0., 495.)), ri = rc/1.3;
+  vec2 q = p.xz; float tri = max(max(q.y, dot(q, vec2(0.866, -0.5))), dot(q, vec2(-0.866, -0.5))) - ri;
+  float d = max(mix(tri, length(q) - rc, smoothstep(0., 300., y))*0.85, max(-y, y - 495.));
+  d = min(d, max(length(q) - 24., abs(y - 346.) - 11.));   // (the Tembo Deck)
+  d = min(d, max(length(q) - 18.5, abs(y - 448.) - 6.));   // (the Tembo Galleria)
+  d = min(d, max(length(q) - mix(6., 3., clamp((y - 495.)/130., 0., 1.)), abs(y - 560.) - 65.));
+  return min(d, max(length(q) - 0.8, abs(y - 629.) - 5.));
+}
+// the lattice on a face (uu along it): 1 on a member, 0 in a gap; k how well a pixel resolves it
+float tkLat(vec3 q, float uu, float px, float P, out float k){
+  float l1 = abs(fract((uu + q.y)/P) - 0.5), l2 = abs(fract((uu - q.y)/P) - 0.5), l3 = abs(fract(q.y/(2.*P)) - 0.5);
+  k = smoothstep(0.5, 0.2, px/P); return smoothstep(0.36, 0.48, max(max(l1, l2), l3));
+}
+#endif
+#ifdef EIFFEL
+// the Eiffel Tower as a model (0.13.0, owner: drawn from the heights it was "a random triangle"), only in P.sxEnvEf, the copy of this
+// shader used near Paris (built in the background: the rest of the world never compiles it). Its real sizes (toureiffel.paris, Wikipedia):
+// the legs at the corners of a 125 m square, the floors at 57.6, 115.7 and 276.1 m (70.7, 41 and 16.5 m across), 300 m to the top of the
+// structure, 330 m with the antenna of 2022. The outer edge's curve is fitted through the floors (the half-width 2.9 + 59.6 e^(-y/94.8) m);
+// the four legs part below about 120 m, with an arch on each face (35 m half-span, 39 m high) under the first floor. The lattice is a
+// pattern of braces on the faces (illustrative). uEf0: its foot (x, z) in this frame, the ground there (m above the sea), the turn of its
+// faces; uEf1: the gold lights (0..1), the sparkle (0..1), a clock for the sparkle (s)
+uniform vec4 uEf0; uniform vec4 uEf1;
+float efW(float y){ return 2.9 + 59.6*exp(-y/94.8); }
+vec3 efLoc(vec3 v){ float c = cos(uEf0.w), s = sin(uEf0.w); return vec3(c*v.x + s*v.z, v.y, -s*v.x + c*v.z); }
+vec3 efWor(vec3 v){ float c = cos(uEf0.w), s = sin(uEf0.w); return vec3(c*v.x - s*v.z, v.y, s*v.x + c*v.z); }
+float efBox(vec3 p, vec3 c, vec3 b){ vec3 q = abs(p - c) - b; return length(max(q, 0.)) + min(max(q.x, max(q.y, q.z)), 0.); }
+// (distances in metres from its foot, y up; the faces lean in, so the distances along them are scaled down for the march)
+float efMap(vec3 p){
+  vec2 a = abs(p.xz); float y = p.y, w = efW(clamp(y, 0., 300.)), m = max(a.x, a.y), n = min(a.x, a.y);
+  float wi = 37.*pow(max(1. - y/122., 0.), 1.1);   // (the gap between the legs: 74 m at the ground, closed at about 120 m)
+  float d = max(max(m - w, wi - n)*0.8, max(-y, y - 300.));
+  float aY = 39.*sqrt(max(1. - (n/35.)*(n/35.), 0.));   // (the arch under the first floor, a 2 m skin on each face between the legs)
+  d = min(d, max(max(abs(m - w + 1.) - 1., n - wi), max(aY - y, y - 57.))*0.8);
+  d = min(d, efBox(p, vec3(0., 54.5, 0.), vec3(37.5, 4., 37.5)));   // (the floors)
+  d = min(d, efBox(p, vec3(0., 115.5, 0.), vec3(21.5, 2.8, 21.5)));
+  d = min(d, efBox(p, vec3(0., 276.3, 0.), vec3(8.4, 2.6, 8.4)));
+  d = min(d, efBox(p, vec3(0., 288.5, 0.), vec3(3.6, 9.5, 3.6)));   // (the top and the antenna)
+  return min(d, max(length(p.xz) - 1.1, abs(y - 315.) - 15.));
+}
+#endif
+// (which city, 0.13.0: x 0 Paris, 1 New York, 2 Tokyo, 3 Dubai, 4 London, 5 to 10 the cities of 0.19.0 (CITY_KEYS in s3-spacex.js), -1 none; y the ground at its centre, m above the sea; z 1 at a
+// famous place, 0.15.0: its water keeps the images' colours)
+uniform vec4 uCity;
+// a building's materials in a city, after each city's common ones and a little brighter than life so they read as characters (illustrative,
+// owner, 0.13.0: "add colours to the buildings to mirror what it would realistically look like"): its walls by a hash of where it stands,
+// its roof; towers over 120 m are glass
+void cityMat(float k, float tall, float hsh, out vec3 wc, out vec3 rc){
+  if(k < 0.5){        // Paris: cream limestone, a little brick, blue-grey zinc roofs
+    wc = hsh < 0.8 ? vec3(0.88, 0.81, 0.66) : hsh < 0.9 ? vec3(0.94, 0.9, 0.8) : vec3(0.66, 0.45, 0.35); rc = vec3(0.56, 0.62, 0.7);
+  } else if(k < 1.5){ // New York: brick, brownstone, limestone, concrete, glass
+    wc = hsh < 0.3 ? vec3(0.66, 0.38, 0.28) : hsh < 0.45 ? vec3(0.52, 0.37, 0.3) : hsh < 0.7 ? vec3(0.84, 0.79, 0.68) : hsh < 0.85 ? vec3(0.7, 0.7, 0.7) : vec3(0.5, 0.63, 0.76); rc = vec3(0.46, 0.46, 0.48);
+  } else if(k < 2.5){ // Tokyo: white and grey concrete, beige tile, glass
+    wc = hsh < 0.4 ? vec3(0.9, 0.9, 0.88) : hsh < 0.7 ? vec3(0.74, 0.75, 0.76) : hsh < 0.85 ? vec3(0.82, 0.76, 0.66) : vec3(0.56, 0.68, 0.8); rc = vec3(0.72, 0.73, 0.74);
+  } else if(k < 3.5){ // Dubai: sand, white, blue-silver glass
+    wc = hsh < 0.5 ? vec3(0.9, 0.8, 0.62) : hsh < 0.75 ? vec3(0.94, 0.93, 0.9) : vec3(0.52, 0.68, 0.82); rc = vec3(0.86, 0.8, 0.68);
+  } else if(k < 4.5){ // London: red-brown brick, yellow stock brick, Portland stone, glass; slate roofs
+    wc = hsh < 0.35 ? vec3(0.68, 0.4, 0.3) : hsh < 0.5 ? vec3(0.8, 0.69, 0.5) : hsh < 0.8 ? vec3(0.9, 0.87, 0.78) : vec3(0.52, 0.64, 0.76); rc = vec3(0.47, 0.49, 0.54);
+  } else if(k < 5.5){ // Hong Kong (0.19.0): white and grey concrete, pale tile, blue-green glass
+    wc = hsh < 0.35 ? vec3(0.86, 0.86, 0.84) : hsh < 0.55 ? vec3(0.7, 0.71, 0.72) : hsh < 0.7 ? vec3(0.84, 0.76, 0.7) : vec3(0.5, 0.66, 0.7); rc = vec3(0.62, 0.63, 0.64);
+  } else if(k < 6.5){ // San Francisco: pale stucco, painted wood in pastels, grey stone, glass
+    wc = hsh < 0.35 ? vec3(0.9, 0.88, 0.82) : hsh < 0.5 ? vec3(0.78, 0.84, 0.86) : hsh < 0.62 ? vec3(0.88, 0.78, 0.74) : hsh < 0.8 ? vec3(0.74, 0.73, 0.71) : vec3(0.52, 0.64, 0.76); rc = vec3(0.6, 0.6, 0.62);
+  } else if(k < 7.5){ // Sydney: golden sandstone, red-brown brick, white render, glass; terracotta tile roofs
+    wc = hsh < 0.25 ? vec3(0.86, 0.72, 0.5) : hsh < 0.5 ? vec3(0.66, 0.42, 0.32) : hsh < 0.75 ? vec3(0.9, 0.88, 0.84) : vec3(0.52, 0.66, 0.76); rc = vec3(0.74, 0.46, 0.34);
+  } else if(k < 8.5){ // Rome: ochre, terracotta and cream plaster, travertine; terracotta tile roofs
+    wc = hsh < 0.3 ? vec3(0.86, 0.64, 0.4) : hsh < 0.55 ? vec3(0.78, 0.48, 0.34) : hsh < 0.8 ? vec3(0.9, 0.82, 0.66) : vec3(0.84, 0.78, 0.66); rc = vec3(0.76, 0.46, 0.33);
+  } else if(k < 9.5){ // Los Angeles: white and beige stucco, pink and tan render, glass
+    wc = hsh < 0.35 ? vec3(0.92, 0.9, 0.86) : hsh < 0.55 ? vec3(0.86, 0.78, 0.66) : hsh < 0.7 ? vec3(0.88, 0.74, 0.7) : vec3(0.54, 0.66, 0.78); rc = vec3(0.8, 0.79, 0.76);
+  } else {            // Rio de Janeiro: white and pastel concrete, red brick of the hillside favelas, glass
+    wc = hsh < 0.35 ? vec3(0.9, 0.9, 0.88) : hsh < 0.55 ? vec3(0.86, 0.8, 0.66) : hsh < 0.75 ? vec3(0.74, 0.46, 0.34) : vec3(0.54, 0.68, 0.76); rc = vec3(0.64, 0.64, 0.64);
+  }
+  if(tall > 0.5) wc = k > 2.5 && k < 3.5 ? vec3(0.55, 0.7, 0.84) : vec3(0.52, 0.65, 0.78);
+}
 int ZI = 0;   // (a 0 the compiler cannot see, set in main from a uniform, so the loops stay loops)
 float CALT = 0., DIP = 0.;   // the height of the camera above the sea (m), and how far below level the horizon lies (radians, about)
 vec3 unTone(vec3 c){ return -log(1. - clamp(c, 0., 0.985)); }
@@ -469,7 +793,118 @@ float curveT(vec3 o, vec3 d, float e){
 // a point of the ground plane at (x, z): its place on the sea-level sphere, in the layers' frame
 vec3 seaPt(vec2 xz){ return vec3(xz.x, -uP4.y - dot(xz, xz)/(2.*RE), xz.y); }
 // the height of whatever is at (x, z), as a y in this frame
-float groundY(vec2 xz, out float water, out float ok){ vec3 P = seaPt(xz); float h = edHeight(P, water, ok); return P.y + max(h, 0.); }
+float groundY(vec2 xz, out float water, out float ok){ vec3 P = seaPt(xz); float h = edHeight(P, water, ok), y = P.y + max(h, 0.); THIN = 0.;
+  for(int i=ZI;i<4;i++){
+    if(float(i) >= uThinN) break;
+#if defined(EIFFEL) || defined(TOKYO) || defined(LM)
+    if(uThinB[i].z > 1.5) continue;
+#endif
+    vec4 a = uThin[i]; vec2 q = abs(xz - a.xy); float r = max(q.x, q.y), R = uThinB[i].x;
+    if(r < R){ float th = uThinB[i].y > 0.5 ? a.w : min(a.w, a.w*log(R/max(r, 0.5))/log(R/1.5)), ty = P.y + a.z + th;
+      if(ty > y){ y = ty; THIN = 1.; ok = 1.; water = 0.; } }
+  }
+  return y; }
+#ifdef LM
+// where the ray meets a landmark (-1: none before tMax), its normal in its own frame, which one (kk) and the point in its frame. The march and
+// the normal's four samples share one loop, so lmMap is compiled once (as for the Eiffel Tower)
+float lmHit(vec3 o, vec3 d, float tMax, out vec3 nl, out float kk, out vec3 ql){
+  nl = vec3(0., 1., 0.); kk = 0.; ql = vec3(0.); float best = -1.;
+  for(int j=ZI;j<2;j++){
+    if(float(j) >= uLm2.z) break;
+    float k = float(j); vec4 U = j == 0 ? uLm0 : uLm1, bb = lmBounds(k);
+    vec3 B = vec3(U.x, seaPt(U.xy).y + U.z, U.y), ol = lmRot(o - B, U.w), dl = lmRot(d, U.w);
+    vec3 iv = 1./(dl + vec3(dl.x < 0. ? -1e-7 : 1e-7, dl.y < 0. ? -1e-7 : 1e-7, dl.z < 0. ? -1e-7 : 1e-7));
+    vec3 t0 = (vec3(-bb.x, bb.y, -bb.w) - ol)*iv, t1 = (vec3(bb.x, bb.z, bb.w) - ol)*iv, tn = min(t0, t1), tf = max(t0, t1);
+    float ta = max(max(tn.x, tn.y), max(tn.z, 0.)), tb = min(min(tf.x, tf.y), min(tf.z, best > 0. ? best : tMax));
+    if(ta >= tb) continue;
+    float t = ta; int hi = -1; vec3 ph = vec3(0.), n = vec3(0.); float ep = 0.;
+    for(int i=ZI;i<124;i++){
+      int mm = hi < 0 ? -1 : i - hi - 1;
+      vec3 kv = mm == 0 ? vec3(1., -1., -1.) : mm == 1 ? vec3(-1., -1., 1.) : mm == 2 ? vec3(-1., 1., -1.) : vec3(1.), p = mm < 0 ? ol + dl*t : ph + kv*ep;
+      float h = lmMap(p, k);
+      if(mm >= 0){ n += kv*h; if(mm == 3) break; continue; }
+      float pw = t*uPix*0.6;
+      if(h < pw){ hi = i; ph = p; ep = max(0.06, t*uPix*0.5); continue; }
+      t += max(h, pw*0.5); if(t > tb) break;
+    }
+    if(hi < 0) continue;
+    best = t; nl = normalize(n + vec3(0., 1e-6, 0.)); kk = k; ql = ph;
+  }
+  return best;
+}
+#endif
+#ifdef TOKYO
+// where the ray meets Tokyo Tower or the Skytree (-1: neither before tMax): the nearer of the two, its normal in its own frame, which (k),
+// and the point in its frame. The lattices' gaps let the ray through where a pixel resolves them, as for the Eiffel Tower
+float tkHit(vec3 o, vec3 d, float tMax, out vec3 nl, out float kk, out vec3 ql){
+  nl = vec3(0., 1., 0.); kk = 0.; ql = vec3(0.); float best = -1.;
+  for(int j=ZI;j<2;j++){
+    float k = float(j); vec4 U = j == 0 ? uTk0 : uTk1; float H = k < 0.5 ? 334. : 635., W = k < 0.5 ? 42. : 41.;
+    vec3 B = vec3(U.x, seaPt(U.xy).y + U.z, U.y), ol = tkRot(o - B, U.w), dl = tkRot(d, U.w);
+    vec3 iv = 1./(dl + vec3(dl.x < 0. ? -1e-7 : 1e-7, dl.y < 0. ? -1e-7 : 1e-7, dl.z < 0. ? -1e-7 : 1e-7));
+    vec3 t0 = (vec3(-W, -1., -W) - ol)*iv, t1 = (vec3(W, H, W) - ol)*iv, tn = min(t0, t1), tf = max(t0, t1);
+    float ta = max(max(tn.x, tn.y), max(tn.z, 0.)), tb = min(min(tf.x, tf.y), min(tf.z, best > 0. ? best : tMax));
+    if(ta >= tb) continue;
+    float t = ta; int hi = -1; vec3 ph = vec3(0.), n = vec3(0.); float ep = 0.;
+    for(int i=ZI;i<114;i++){
+      int mm = hi < 0 ? -1 : i - hi - 1;
+      vec3 kv = mm == 0 ? vec3(1., -1., -1.) : mm == 1 ? vec3(-1., -1., 1.) : mm == 2 ? vec3(-1., 1., -1.) : vec3(1.), p = mm < 0 ? ol + dl*t : ph + kv*ep;
+      float h = tkMap(p, k);
+      if(mm >= 0){ n += kv*h; if(mm == 3) break; continue; }
+      float pw = t*uPix*0.6;
+      if(h < pw){
+        // (the lattice's gaps: on Tokyo Tower's legs and shaft; the Skytree's lattice is dense round its core, and from any distance it reads
+        // as a solid pale tower: see-through, it came out as a few thin lines)
+        float kL, ang = atan(p.z, p.x), P = k < 0.5 ? max(1.6, 0.17*ttW(clamp(p.y, 0., 252.))) : 7., uu = k < 0.5 ? (abs(p.x) > abs(p.z) ? p.z : p.x) : ang*skRc(clamp(p.y, 0., 495.));
+        bool open = k < 0.5 && p.y > 19. && p.y < 250. && abs(p.y - 148.) > 5.;
+        float lat = tkLat(p, uu, t*uPix, P, kL);
+        if(open && kL > 0.6 && lat < 0.5){ t += max(pw*2., 0.6); continue; }
+        hi = i; ph = p; ep = max(0.12, t*uPix*0.5); continue; }
+      t += h*0.85; if(t > tb) break; }
+    if(hi < 0) continue;
+    best = t; nl = normalize(n + vec3(0., 1e-6, 0.)); kk = k; ql = ph;
+  }
+  return best;
+}
+#endif
+#ifdef EIFFEL
+// the lattice at q on a face (uu: along the face): braces crossing and a girder every panel, the panels smaller toward the top; 1 on a girder,
+// 0 in a gap. k: how well a pixel resolves it (it fades to its average, 0.45, where a pixel covers half a panel or more)
+float efLat(vec3 q, float uu, float px, out float k){
+  float P = max(1.6, 0.17*efW(clamp(q.y, 0., 300.)));
+  float l1 = abs(fract((uu + q.y)/P) - 0.5), l2 = abs(fract((uu - q.y)/P) - 0.5), l3 = abs(fract(q.y/(2.*P)) - 0.5);
+  k = smoothstep(0.5, 0.2, px/P); return smoothstep(0.36, 0.48, max(max(l1, l2), l3));
+}
+// which way a point on a leg or the shaft runs along its face (the coordinate across the face it is nearest)
+float efU(vec3 q){ vec2 a = abs(q.xz); float w = efW(clamp(q.y, 0., 300.)), wi = 37.*pow(max(1. - q.y/122., 0.), 1.1);
+  return min(abs(a.x - w), abs(a.x - wi)) < min(abs(a.y - w), abs(a.y - wi)) ? q.z : q.x; }
+// whether a point is on the lattice of the legs or the shaft (not a floor, the arch, the top or the antenna)
+bool efOpen(vec3 q){ float y = q.y; vec2 a = abs(q.xz);
+  return y > 1. && y < 272. && abs(y - 54.5) > 4.5 && abs(y - 115.5) > 3.2 && !(y < 58. && min(a.x, a.y) < 37.*pow(max(1. - y/122., 0.), 1.1) + 0.5); }
+// where the ray meets it (-1 if nowhere before tMax), and its normal there in its own frame. Where the lattice's gaps are big enough to
+// see, the ray goes on through them, to the girders behind or past the tower (the real tower is mostly air)
+float efHit(vec3 o, vec3 d, float tMax, out vec3 nl){
+  nl = vec3(0., 1., 0.);
+  vec3 B = vec3(uEf0.x, seaPt(uEf0.xy).y + uEf0.z, uEf0.y), ol = efLoc(o - B), dl = efLoc(d);
+  vec3 iv = 1./(dl + vec3(dl.x < 0. ? -1e-7 : 1e-7, dl.y < 0. ? -1e-7 : 1e-7, dl.z < 0. ? -1e-7 : 1e-7));
+  vec3 t0 = (vec3(-64., -1., -64.) - ol)*iv, t1 = (vec3(64., 331., 64.) - ol)*iv, tn = min(t0, t1), tf = max(t0, t1);
+  float ta = max(max(tn.x, tn.y), max(tn.z, 0.)), tb = min(min(tf.x, tf.y), min(tf.z, tMax));
+  if(ta >= tb) return -1.;
+  // (the march and, after a hit, the normal's four samples in one loop: efMap is compiled once; on Direct3D each place it is called from is
+  // compiled on its own, and two took the Paris copy's compile from about 3 to 4 s)
+  float t = ta; int hi = -1; vec3 ph = vec3(0.), n = vec3(0.); float ep = 0.;
+  for(int i=ZI;i<100;i++){
+    int m = hi < 0 ? -1 : i - hi - 1;
+    vec3 kv = m == 0 ? vec3(1., -1., -1.) : m == 1 ? vec3(-1., -1., 1.) : m == 2 ? vec3(-1., 1., -1.) : vec3(1.), p = m < 0 ? ol + dl*t : ph + kv*ep;
+    float h = efMap(p);
+    if(m >= 0){ n += kv*h; if(m == 3) break; continue; }
+    float pw = t*uPix*0.6;
+    if(h < pw){ float k, l = efLat(p, efU(p), t*uPix, k); if(k > 0.6 && l < 0.5 && efOpen(p)){ t += max(pw*2., 0.6); continue; } hi = i; ph = p; ep = max(0.12, t*uPix*0.5); continue; }
+    t += h*0.85; if(t > tb) break; }
+  if(hi < 0) return -1.;
+  nl = normalize(n + vec3(0., 1e-6, 0.)); return t;
+}
+#endif
 // the sky as it shows in direction r (day 0..1): deep blue overhead, paler toward the horizon (whiter when the air is hazy), both fading as
 // the air thins below the camera; gold round a low Sun and along that side of the horizon; at dusk and dawn, the Earth's grey-blue shadow
 // low on the far side with the pink band above it (the Belt of Venus); the Sun, in a halo that grows with haze
@@ -509,13 +944,16 @@ vec4 layerLow(vec3 o, vec3 d, float e, float tMax, vec3 L, float lit, vec3 sunC,
   float dt = (t1 - t0)/16., ph = 0.6 + 1.3*pow(max(dot(d, L), 0.), 8.);
   for(int i=ZI;i<16;i++){
     float t = t0 + dt*(float(i) + 0.5); vec3 p = o + d*t; float al = altOf(p, e);
-    // (a camera inside the layer flies in clear air between the clouds, as a camera plane would: no fog round it)
-    float dn = cloudLow(p, al)*(CALT > b && CALT < tp ? smoothstep(150., 700., t) : 1.); if(dn < 0.01) continue;
+    // (a camera inside the layer flies in clear air between the clouds, as a camera plane would: no fog round it. Over a city or the ground
+    // anywhere (uP4.z) the gap is a few kilometres wide, so the place below shows: London's overcast at 300 m put the Shard's view in fog)
+    vec2 gap = uP4.z != 0. ? vec2(2500., 5000.) : vec2(150., 700.);
+    float dn = cloudLow(p, al)*(CALT > b && CALT < tp ? smoothstep(gap.x, gap.y, t) : 1.); if(dn < 0.01) continue;
     // (the light through the cloud toward the Sun, gentler than physics would have it: in characters a cloud reads by its bright sunlit
     // side against the blue, and a physically deep cloud came out as a grey veil)
     float od = cloudLowC(p + L*140.)*0.8 + cloudLowC(p + L*450.)*1.0, hN = clamp((al - b)/max(tp - b, 50.), 0., 1.);
     vec3 cc = sunC*exp(-od*0.5)*ph + vec3(0.62, 0.68, 0.78)*(0.3 + 0.32*hN)*lit;
     cc *= mix(1., 0.55, clamp(uWx1.w*0.4, 0., 1.));   // (rain clouds are dark)
+    cc += vec3(0.09, 0.055, 0.03)*(uP4.z < 0. ? 1. - smoothstep(-0.12, 0.05, L.y) : 0.)*(1. - 0.6*hN);   // (over a city at night, faintly lit orange from below by its lights; brighter, an overcast deck filled the sky with orange)
     cc = mix(cc, hz, hazeF(t, thin));
     float a = 1. - exp(-dn*dt*0.012);
     col += T*cc*a; T *= 1. - a; if(T < 0.03) break;
@@ -552,6 +990,10 @@ void main(){
   float thin = exp(-CALT/8500.);
   float lit = 0.04 + 0.96*smoothstep(-0.1, 0.2, sunE);   // how bright the day is: full with the Sun 12 degrees up (a camera's exposure follows the light: at 20 degrees a dawn launch came out murky), dim at night
   float near = smoothstep(30000., 8000., CALT);   // (above 30 km the ground shows as Earth's shader shows it, below 8 km brighter and richer)
+  // (a city (uP4.z < 0) at night: the eyes adjust, as they do in a city at night: the picture brightened about 2.6 times, so the buildings
+  // show by moonlight and the glow of the streets; owner, 0.13.0: the cities were hard to see at night)
+  // (and at dawn and dusk too, as the light gets low: owner, 0.13.0, Paris at 7:19 was a dark brown field)
+  float nightK = 1. - smoothstep(-0.12, 0.05, sunE), cityK = uP4.z < 0. ? 1. : 0., expo = 1. + cityK*(0.12 + 1.48*nightK + 0.8*smoothstep(0.35, 0.02, sunE)*(1. - nightK));
   vec3 col; float a;
   // the ground: march the heights near the camera (then halve the last step a few times), else the sea-level curve
   float t = -1., water = 0., ok = 0.;
@@ -560,19 +1002,70 @@ void main(){
   float hTop = uEdS.z - e + 5.;
   if(det && d.y < 0.3 && (o.y < hTop || d.y < 0.)){
     float tt = o.y > hTop ? (o.y - hTop)/max(-d.y, 1e-5) : 0., tp = tt, lo = 0., hi = 0.; int nb = -1;
+    // (at a pad 40 km, finely; over the ground anywhere (uP4.z > 0) much farther, in longer steps: the mountains are far and the heights
+    // coarse; over a city (uP4.z < 0) as far as -uP4.z, finely near, so its towers stand up, and in longer steps farther out)
+    float tLim = uP4.z > 0. ? uP4.z : uP4.z < 0. ? -uP4.z : 40000., gA = uP4.z > 0. ? 100. : 25., gS = uP4.z > 0. ? 0.06 : uP4.z < 0. ? 0.05 : 0.04;
     for(int i=ZI;i<86;i++){
       float tm = nb < 0 ? tt : 0.5*(lo + hi), w, k;
       vec3 p = o + d*tm; float dh = p.y - groundY(p.xz, w, k);
       if(nb < 0){
         if(dh < 0.){ nb = 0; lo = tp; hi = tt; continue; }
-        tp = tt; tt += clamp(dh*0.55, 0.25 + tt*0.003, 25. + tt*0.04);
-        if(tt > 40000. || (k < 0.5 && tt > 200.)) break;
+        tp = tt; tt += clamp(dh*0.55, 0.25 + tt*0.003, gA + tt*gS);
+        if(tt > tLim || (k < 0.5 && tt > 200.)) break;
       } else { if(dh < 0.) hi = tm; else lo = tm; nb++; if(nb >= 6) break; }
     }
     if(nb >= 0) t = hi;
   }
   float tc = curveT(o, d, e);
   if(t < 0. && tc > 0.) t = tc;
+#ifdef EIFFEL
+  vec3 nE; float tE = efHit(o, d, t > 0. ? t : 1e9, nE);
+  if(tE > 0.){
+    vec3 B = vec3(uEf0.x, seaPt(uEf0.xy).y + uEf0.z, uEf0.y), q = efLoc(o + d*tE - B), nw = efWor(nE);
+    // (the lattice: braces crossing on each face and a girder every panel, the panels smaller toward the top; it fades to its average
+    // where a character covers more than a panel. By day the girders bronze and the gaps darker; at night the girders lit gold)
+    float uu = abs(nE.x) > abs(nE.z) ? q.z : q.x, kL, lt = efLat(q, uu, tE*uPix, kL);
+    lt = mix(0.45, lt, kL*(1. - smoothstep(0.7, 0.9, abs(nE.y))));
+    float ov = smoothstep(0.5, 0.95, uWx0.x), fl = max(sunE, 0.)*(1. - 0.65*ov) + 0.6;
+    float here = max(dot(nw, L), 0.)*cloudShadow(o + d*tE, e, L) + 0.6*(0.85 + 0.15*nw.y);
+    vec3 g = vec3(0.64, 0.5, 0.36)*mix(0.32, 1., lt)*lit*clamp(here/fl, 0.15, 1.6);
+    g += vec3(1., 0.7, 0.32)*uEf1.x*(0.3 + 0.5*lt);
+    g += vec3(1., 0.96, 0.88)*1.6*uEf1.y*step(0.975, hash12(floor(vec2(uu, q.y)/2.2) + floor(uEf1.z*7.)*vec2(3.1, 7.7)));
+    col = mix(g, skyCol(normalize(vec3(d.x, DIP + 0.015, d.z)), L, day), hazeF(tE, thin)*0.4); a = 1.; t = tE;
+  } else
+#endif
+#ifdef LM
+  vec3 nM, qM; float kM, tM = lmHit(o, d, t > 0. ? t : 1e9, nM, kM, qM);
+  if(tM > 0.){
+    vec4 U = kM < 0.5 ? uLm0 : uLm1; vec3 nw = lmRot(nM, -U.w);
+    float glow, ov = smoothstep(0.5, 0.95, uWx0.x), fl = max(sunE, 0.)*(1. - 0.65*ov) + 0.6;
+    vec3 base = lmBase(qM, nM, kM, tM*uPix, glow);
+    float here = max(dot(nw, L), 0.)*cloudShadow(o + d*tM, e, L) + 0.6*(0.85 + 0.15*nw.y);
+    vec3 g = base*lit*clamp(here/fl, 0.15, 1.6) + vec3(1., 0.88, 0.7)*base*uLm2.x*glow;
+    col = mix(g, skyCol(normalize(vec3(d.x, DIP + 0.015, d.z)), L, day), hazeF(tM, thin)*0.4); a = 1.; t = tM;
+  } else
+#endif
+#ifdef TOKYO
+  vec3 nT, qT; float kT, tT = tkHit(o, d, t > 0. ? t : 1e9, nT, kT, qT);
+  if(tT > 0.){
+    vec3 nw = tkRot(nT, -(kT < 0.5 ? uTk0.w : uTk1.w));
+    float ang = atan(qT.z, qT.x), P = kT < 0.5 ? max(1.6, 0.17*ttW(clamp(qT.y, 0., 252.))) : 7.;
+    float uu = kT < 0.5 ? (abs(nT.x) > abs(nT.z) ? qT.z : qT.x) : ang*skRc(clamp(qT.y, 0., 495.)), kL, lt = tkLat(qT, uu, tT*uPix, P, kL);
+    lt = mix(0.45, lt, kL*(1. - smoothstep(0.7, 0.9, abs(nT.y))));
+    // (the decks: dark glass, lit windows at night)
+    bool deck = kT < 0.5 ? abs(qT.y - 148.) < 4.6 || abs(qT.y - 249.6) < 2.7 || qT.y < 18.2 : abs(qT.y - 346.) < 11.1 || abs(qT.y - 448.) < 6.1;
+    float ov = smoothstep(0.5, 0.95, uWx0.x), fl = max(sunE, 0.)*(1. - 0.65*ov) + 0.6;
+    float here = max(dot(nw, L), 0.)*cloudShadow(o + d*tT, e, L) + 0.6*(0.85 + 0.15*nw.y);
+    // (Tokyo Tower's bands: international orange and white, eleven of them; the Skytree's "Skytree White", a faint blue)
+    vec3 base = kT < 0.5 ? (mod(floor(qT.y/(333./11.)), 2.) < 0.5 ? vec3(0.95, 0.4, 0.14) : vec3(0.93, 0.92, 0.9)) : vec3(0.84, 0.88, 0.93);
+    if(deck) base = vec3(0.3, 0.34, 0.38);
+    vec3 g = base*mix(kT < 0.5 ? 0.32 : 0.7, 1., deck ? 1. : lt)*lit*clamp(here/fl, 0.15, 1.6);
+    float on = kT < 0.5 ? uTk2.x : uTk2.y;
+    vec3 lc = kT < 0.5 ? (uTk2.w > 0.5 ? vec3(1., 0.95, 0.85) : vec3(1., 0.55, 0.2)) : (uTk2.z > 0.5 ? vec3(0.62, 0.35, 1.) : vec3(0.4, 0.75, 1.));
+    g += deck ? vec3(1., 0.85, 0.6)*on*0.35*step(0.4, fract(uu/3.)) : lc*on*(0.3 + 0.5*lt);
+    col = mix(g, skyCol(normalize(vec3(d.x, DIP + 0.015, d.z)), L, day), hazeF(tT, thin)*0.4); a = 1.; t = tT;
+  } else
+#endif
   if(t > 0.){
     vec3 p = o + d*t;
     float fp = max(t*uPix, 0.05), cov = 0., wall = 0., sh = 1.;
@@ -580,7 +1073,12 @@ void main(){
     // (a pixel's footprint on the ground: stretched along the view by the glancing angle, up to 16 times)
     vec3 hd = normalize(vec3(d.x, 0., d.z) + vec3(1e-5, 0., 0.)), g1 = hd*fp/max(abs(d.y), 0.0625), g2 = vec3(-hd.z, 0., hd.x)*fp;
     vec3 img = det ? edColourG(seaPt(p.xz), g1, g2, cov).rgb : vec3(0.);
-    float gy = det ? groundY(p.xz, water, ok) : -e;
+#ifdef CITY
+    // (the road and its cars here, worked out once: called from the land and from the bridges, cars() was compiled twice)
+    vec3 cBd = vec3(0.5); vec2 cEn = vec2(p.x, -p.z); vec4 cRd = roadAt(cEn, fp), cCr = vec4(0.);
+    if(cRd.y > -900.) cCr = cars(cEn, cRd, fp, normalize(vec2(d.x, -d.z) + vec2(1e-5, 0.)), cBd)*smoothstep(uRdN.w, uRdN.w*0.65, max(abs(cEn.x), abs(cEn.y)));
+#endif
+    float gy = det ? groundY(p.xz, water, ok) : -e, thinHit = THIN;
     if(det && ok > 0.5 && water < 0.5){
       // the slope from the heights a little east and south (a wall where it changes by more than a storey in a pixel or two)
       float s = max(fp*1.5, 0.8), hx = gy, hz = gy;
@@ -605,39 +1103,106 @@ void main(){
       // (waves tilt the water: it mirrors a higher, darker part of the sky than a flat mirror would, and never all of it, so the sea stays
       // darker than the sky at the horizon)
       vec3 rr = reflect(d, nw); rr.y = max(abs(rr.y), 0.12); rr = normalize(rr);
-      float F = min(0.02 + 0.98*pow(1. - max(-dot(d, nw), 0.), 5.), 0.35);
-      // (the water's own colour: the photo's, turned bluer, so a murky coast still reads as sea and a dark lagoon never as a hole; one colour on the open sea)
-      float eg, op = cov > 0.5 ? edWide(seaPt(p.xz), eg).a : 1.;
-      vec3 deep = vec3(0.03, 0.1, 0.2), ocn = vec3(0.03, 0.12, 0.24), wi = mix(img*vec3(0.7, 0.85, 1.05), vec3(0.04, 0.13, 0.25), 0.55);
+      float F = min(0.02 + 0.98*pow(1. - max(-dot(d, nw), 0.), 5.), cityK > 0.5 ? 0.18 : 0.35);   // (a city's water mirrors less: it was as bright as the city, and the city vanished into it)
+      // (the water's own colour: the photo's, turned bluer, so a murky coast still reads as sea and a dark lagoon never as a hole; one colour on the open sea.
+      // At a famous place (uCity.z) the images' water shows everywhere, more of it: its reefs and lagoons are what it is about, and its wide layers
+      // were cleaned of seams and haze over the open sea when they were made)
+      float eg, op = cov > 0.5 ? edWide(seaPt(p.xz), eg).a*(1. - uCity.z) : 1.;
+      vec3 deep = vec3(0.03, 0.1, 0.2), ocn = vec3(0.03, 0.12, 0.24), wi = mix(img*vec3(0.7, 0.85, 1.05), vec3(0.04, 0.13, 0.25), 0.55 - 0.3*uCity.z);
       vec3 wc = mix(fromSpace(mix(mix(ocn, edLin(img), 0.55*step(0.5, cov)), ocn, op), sunE), mix(cov > 0.5 ? wi : deep, deep, op)*lit, near);
       g = mix(wc*mix(0.72, 1., csh), skyCol(rr, L, day)*0.95, F);
       g += vec3(1., 0.9, 0.75)*pow(max(dot(rr, L), 0.), 80.)*smoothstep(-0.05, 0.05, sunE)*0.8*csh;
       vec3 lv = uP3.xyz - p; g += vec3(1., 0.55, 0.22)*uP3.w*pow(max(dot(rr, normalize(lv)), 0.), 20.)*0.3/(1. + dot(lv, lv)*2e-7);
+#ifdef CITY
+      // (a bridge: its deck over the water, and its traffic)
+      if(cRd.y > -900. && cRd.w >= 16. && abs(cRd.y) < max(cRd.z, 1.)*1.65 + 1.5){
+        float ln = 1. - smoothstep(-0.03, 0.08, sunE); g = mix(vec3(0.46, 0.45, 0.43)*lit, cBd*lit, cCr.a*(1. - ln)) + cCr.rgb*ln + vec3(1., 0.62, 0.3)*0.06*ln; }
+#endif
     } else {
       vec3 base;
       // (near the ground a little darker than the rockets and towers, so they stand out; from a kilometre or more up, where the view is
       // about the land, brighter)
-      if(cov > 0.5) base = mix(fromSpace(edLin(img), sunE), grade(img)*mix(0.6, 0.9, smoothstep(300., 1500., CALT))*lit, near);
+      // (over the ground anywhere (uP4.z) the image is Blue Marble at 2.4 km, darker and softer than a photo: as it is, a little lifted, or
+      // its forests turned black)
+      // (a city's images are in display terms since 0.17.0, its roofs painted in its materials (tools/city-style.mjs): shown as they are)
+      if(cov > 0.5) base = mix(fromSpace(edLin(img), sunE), (uP4.z > 0. ? img*1.08 + 0.02 : uP4.z < 0. ? img*1.15 : grade(img))*(uP4.z < 0. ? 1. : mix(0.6, 0.9, smoothstep(300., 1500., CALT)))*lit, near);
       else {
         float h = fbm3(vec3(p.xz*0.004, 2.)), h2 = noise(vec3(p.xz*0.03, 5.));
         base = mix(vec3(0.5, 0.45, 0.33), vec3(0.3, 0.36, 0.2), smoothstep(0.4, 0.6, h))*(0.8 + 0.4*h2);
         if(sd > -120.) base = mix(base, vec3(0.75, 0.7, 0.58), smoothstep(-120., -40., sd));
         base = mix(base, vec3(0.5, 0.49, 0.47), smoothstep(90., 70., length(p.xz)))*lit;
       }
+      // a city (uP4.z < 0): the photos are taken from above, so a wall gets a facade of its own, concrete and glass with floors 3.6 m high
+      // and windows 2.6 m apart (illustrative), about a third of them lit at night; paved ground (grey and light in the photo) glows faintly
+      // warm at night, as street lights do (illustrative)
+      vec3 glowC = vec3(0.);
+      if(uP4.z < 0. && cov > 0.5){
+        // (the architectural-model style, 0.17.0, owner's pick: the roofs come painted, the ground keeps the photo, darker. How far this stands above
+        // the lowest ground within 18 and 54 m tells a roof, even in the middle of a big building, from the street; the highest point within 18 m is
+        // the roof of a wall's building, whose height picks the wall's material, one per building, and says how much a taller neighbour shades the
+        // ground at its foot)
+        float m = gy, mx = gy, w1, k1;
+        for(int j=ZI;j<8;j++){ int q = j < 4 ? j : j - 4; vec2 o2 = (q == 0 ? vec2(1., 0.) : q == 1 ? vec2(-1., 0.) : q == 2 ? vec2(0., 1.) : vec2(0., -1.))*(j < 4 ? 18. : 54.);
+          float hq = groundY(p.xz + o2, w1, k1); m = min(m, hq); if(j < 4) mx = max(mx, hq); }
+        float roof = smoothstep(3., 12., gy - m)*(1. - thinHit), ao = (1. - roof)*smoothstep(6., 25., mx - gy);
+        vec3 wc, rc;
+        vec2 nH = normalize(n.xz + vec2(1e-5, 0.));
+        cityMat(uCity.x, step(120., altOf(vec3(p.x, mx, p.z), e) - uCity.y), hash12(floor((p.xz - nH*5.)/32.) + vec2(uCity.x*7.1, 3.3)), wc, rc);
+        base *= mix(0.6 - 0.2*ao, 1.15, roof);   // (the ground between the buildings dark, the roofs light: in characters the blocks stand out with an edge round each)
+        glowC += vec3(0.04, 0.05, 0.08)*mix(0.5, 1., roof)*nightK;   // (moonlight and the city's skyglow on its roofs)
+        float wl = smoothstep(0.3, 0.7, wall)*(1. - thinHit), hA = altOf(p, e), nt = 1. - smoothstep(-0.12, 0.05, sunE);
+        vec2 tn = normalize(vec2(-n.z, n.x) + vec2(1e-5, 0.)); float wu = dot(p.xz, tn);
+        vec2 cell = floor(vec2(wu/2.6, hA/3.6)), fw = fract(vec2(wu/2.6, hA/3.6));
+        float win = mix(0.33, step(0.2, fw.x)*step(fw.x, 0.8)*step(0.3, fw.y)*step(fw.y, 0.85), smoothstep(1.6, 0.8, fp));   // (resolved only up close: farther they aliased into noise)
+        base = mix(base, (uCity.x >= 0. ? wc : mix(vec3(0.42, 0.44, 0.47), img, 0.35))*(0.85 + 0.25*win)*lit, wl);
+        glowC += vec3(1., 0.78, 0.45)*win*step(0.66, hash12(cell + floor(p.xz/40.)*7.31))*nt*wl*0.9;
+        float lum = dot(img, vec3(0.3, 0.59, 0.11)), sat = length(img - vec3(lum));
+        float pav = 0.2;
+#ifdef CITY
+        pav = uRdT.x > -0.5 ? 0.07 : 0.2;   // (with the road maps the streets carry the night glow, below)
+#endif
+        glowC += vec3(1., 0.62, 0.3)*nt*(1. - wl)*smoothstep(0.18, 0.4, lum)*(1. - smoothstep(0.03, 0.12, sat))*pav*(1. - thinHit);
+#ifdef CITY
+        // (the traffic: its lamps from a little before sunset, the cars' bodies as specks by day)
+        { vec3 bd = cBd; vec2 en = cEn; vec4 rd = cRd, cr = rd.y > -900. && wl < 0.5 && thinHit < 0.5 ? cCr : vec4(0.);
+          float ln = 1. - smoothstep(-0.03, 0.08, sunE);
+          if(rd.y > -900. && wl < 0.5 && roof < 0.5 && abs(rd.y) < max(rd.z, 1.)*1.65 + 1. + min(fp*0.4, 20.)*step(floor(mod(rd.w, 16.)/2.), 2.5)) base *= mix(0.72, 0.5, smoothstep(3., 10., fp));   // (the carriageway darker: the street plan reads; the big roads wider far off)
+          glowC += cr.rgb*ln; base = mix(base, bd*lit, cr.a*(1. - ln));
+          // (the street lights: orange on the carriageway and its pavements; far off, where a pixel is wider than a street, over the drawn width)
+          // (fading out before the far map's edge, 24 km out: cut off there, the glow drew a bright line along the horizon)
+          if(rd.y > -900. && wl < 0.5) glowC += vec3(1., 0.6, 0.28)*ln*(abs(rd.y) < max(rd.z, 1.)*1.65 + 3. ? 0.2 : abs(rd.y) < min(fp*0.7, 60.) ? 0.09*smoothstep(4., 20., fp) : 0.)*smoothstep(uRdN.w, uRdN.w*0.65, max(abs(en.x), abs(en.y)));
+          if(uRdT.w > 0.5 && rd.y > -900.){ float hw = max(rd.z, 1.)*1.65; base = abs(rd.y) < hw ? (rd.y > 0. ? vec3(1., 0.2, 0.1) : vec3(0.1, 0.4, 1.)) : vec3(1., 1., 0.); } }   // (tests: the road maps)
+#endif
+        // (a slender tower: painted iron or concrete, and lit gold at night, as the Eiffel Tower is every evening)
+        // (bronze in the Sun: in a darker brown the Eiffel Tower hid among the roofs)
+        base = mix(base, vec3(0.64, 0.5, 0.36)*lit, thinHit); glowC += vec3(1., 0.72, 0.36)*thinHit*nt*0.45;
+      }
       // (the photo already holds the light on flat ground; slopes, walls and shadows change it by their share of the light of the Sun)
-      float fl = max(sunE, 0.) + 0.3, here = max(dot(n, L), 0.)*sh*csh + 0.3*(0.6 + 0.4*n.y);
-      g = base*clamp(here/fl, 0.15, 1.6)*mix(1., 0.8, wall);
+      // (in a city twice the light from the sky and the facades round about, and walls lit by the street and the buildings opposite, so a
+      // wall in shade keeps its colour: in characters a dark wall is an empty one, and Midtown seen against the afternoon Sun was a murk;
+      // under an overcast sky the eyes adjust to its dimmer light, as they do; 0.13.0, owner: the cities looked camouflaged)
+      float amb = mix(0.3, 0.38, cityK), ovc = cityK*smoothstep(0.5, 0.95, uWx0.x);   // (0.45 in a city since 0.17.0: sunlit and shaded walls further apart, as on a model)
+      float fl = max(sunE, 0.)*(1. - 0.65*ovc) + amb, here = max(dot(n, L), 0.)*sh*csh + amb*mix(0.6 + 0.4*n.y, 0.85 + 0.15*n.y, cityK);
+      g = base*clamp(here/fl, 0.15, 1.6)*mix(1., 0.8, wall*(1. - cityK)) + glowC;
       // lights round the site at night
       vec2 cl = floor(p.xz/35.); float hl = hash12(cl);
-      if(hl > 0.93 && length(p.xz) < 1400.){ vec2 f = fract(p.xz/35.) - 0.5; g += vec3(1., 0.7, 0.35)*exp(-dot(f, f)*60.)*(1. - day)*0.5; }
+      if(hl > 0.93 && length(p.xz) < 1400. && uP4.z == 0.){ vec2 f = fract(p.xz/35.) - 0.5; g += vec3(1., 0.7, 0.35)*exp(-dot(f, f)*60.)*(1. - day)*0.5; }
       vec3 lv = uP3.xyz - p; g += base*vec3(1., 0.55, 0.22)*uP3.w*1.5*max(dot(n, normalize(lv)), 0.)/(1. + dot(lv, lv)*4e-6);
     }
-    g = mix(g, haze, hazeF(t, thin));
+    g = mix(g, haze, hazeF(t, thin)*(1. - mix(0.6, 0.85, cityK*(1. - smoothstep(4000., 15000., t)))*cityK));   // (less over a city: its skyline far off was washed out)
     col = g; a = 1.;
   } else {
-    col = skyCol(d, L, day);
+    col = skyCol(d, L, day) + vec3(0.2, 0.12, 0.06)*nightK*cityK*exp(-max(d.y - DIP, 0.)*9.)*thin;   // (a city's glow low in the night sky)
     float tw = smoothstep(-0.18, 0.02, sunE)*smoothstep(0.25, 0.0, sunE);
     a = clamp((0.25 + 0.74*day)*mix(0.35, 1., thin) + 0.3*tw, 0., 0.99);
+  }
+  // the blinking lights on a city's tallest towers (uTwL: their tops in this frame, w how bright now), hidden by whatever the ray met first
+  for(int i=ZI;i<16;i++){
+    if(float(i) >= uTwLN) break;
+    vec4 tw = uTwL[i]; if(tw.w < 0.01) continue;
+    vec3 v = tw.xyz - o; float tl = dot(v, d); if(tl <= 0. || (t > 0. && tl > t + 8.)) continue;
+    float r = length(v - d*tl), s = max(tl*uPix*1.4, 1.5);
+    col += vec3(1., 0.16, 0.08)*tw.w*(exp(-r*r/(s*s))*2.2 + exp(-r/(s*6.))*0.12);
   }
   // the clouds in front of what the ray met, in the order it meets them (the sunlight warm when the Sun is low)
   { vec3 sunC = mix(vec3(1., 0.97, 0.92), vec3(1., 0.62, 0.36), smoothstep(0.3, 0.02, sunE))*lit*smoothstep(-0.06, 0.04, sunE);
@@ -650,6 +1215,15 @@ void main(){
     if(tM < tL){ X = A1; A1 = A2; A2 = X; }
     vec3 cc = A1.rgb + A1.a*(A2.rgb + A2.a*A3.rgb); float Tc = A1.a*A2.a*A3.a;
     col = col*Tc + cc; a = 1. - (1. - a)*Tc; }
-  outCol(unTone(col)*fade, a*fade);
+  outCol(unTone(col)*expo*fade, a*fade);
 }`;
 P.sxEnv = program(VS_RECT, FS_SX_ENV);
+P.sxEnvC = program(VS_RECT, FS_SX_ENV.replace('#version 300 es\n', '#version 300 es\n#define CITY\n'));   // (with the traffic: over a city, 0.14.0)
+P.sxEnvEf = program(VS_RECT, FS_SX_ENV.replace('#version 300 es\n', '#version 300 es\n#define CITY\n#define EIFFEL\n'));   // (and the Eiffel Tower: near Paris)
+P.sxEnvTk = program(VS_RECT, FS_SX_ENV.replace('#version 300 es\n', '#version 300 es\n#define CITY\n#define TOKYO\n'));   // (and Tokyo Tower and the Skytree: near Tokyo)
+// (0.19.0: the landmarks of the new cities, each city's in its own copy)
+P.sxEnvSF = program(VS_RECT, FS_SX_ENV.replace('#version 300 es\n', '#version 300 es\n#define CITY\n#define LM\n#define LM_SF\n'));
+P.sxEnvSyd = program(VS_RECT, FS_SX_ENV.replace('#version 300 es\n', '#version 300 es\n#define CITY\n#define LM\n#define LM_SYD\n'));
+P.sxEnvRome = program(VS_RECT, FS_SX_ENV.replace('#version 300 es\n', '#version 300 es\n#define CITY\n#define LM\n#define LM_ROME\n'));
+P.sxEnvLA = program(VS_RECT, FS_SX_ENV.replace('#version 300 es\n', '#version 300 es\n#define CITY\n#define LM\n#define LM_LA\n'));
+P.sxEnvRio = program(VS_RECT, FS_SX_ENV.replace('#version 300 es\n', '#version 300 es\n#define CITY\n#define LM\n#define LM_RIO\n'));
