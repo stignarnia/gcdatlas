@@ -6,6 +6,10 @@
   <kcfgfile name=""/>
 
   <group name="General">
+    <entry name="Tour" type="String">
+      <label>Tour to play</label>
+      <default>saver</default>
+    </entry>
     <entry name="Travel" type="String">
       <label>How fast the camera flies between places: cinematic (slow) or quick</label>
       <default>cinematic</default>

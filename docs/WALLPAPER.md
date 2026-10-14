@@ -47,6 +47,7 @@ kpackagetool6 -t Plasma/Wallpaper -i gcdatlas-plasma-wallpaper.tar.gz
 1. Right-click your desktop and choose **Configure Desktop and Wallpaper...**
 2. In the **Wallpaper Type** dropdown, select **gcdatlas**.
 3. Choose your preferred settings:
+   - **Tour**: Which tour to play (*Screensaver*, *Wonders of Earth*, *Grand tour*, *Messier marathon*, or any other catalog tour).
    - **Travel between places**: *Slow and scenic* (`cinematic`) or *Quick* (`quick`).
    - **Frames per second**: `15`, `30`, or `60`.
    - **Object name**: Position of the viewed object name (*Hide*, *Top left*, *Top center*, *Top right*, *Bottom left*, *Bottom center*, or *Bottom right*).
@@ -77,7 +78,7 @@ Because the wallpaper runs inside QtWebEngine (Chromium), system resource monito
 `?wallpaper=1` is a standard web URL mode supported by any web-view wallpaper utility (such as Komorebi, Electron wallpaper runners, or a kiosk browser):
 
 ```text
-https://gcdatlas.com/?wallpaper=1&travel=cinematic&fps=30
+https://gcdatlas.com/?wallpaper=1&tour=earth&travel=cinematic&fps=30
 ```
 
 Supported query parameters:

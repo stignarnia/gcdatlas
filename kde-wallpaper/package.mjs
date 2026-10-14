@@ -17,6 +17,29 @@ execFileSync(process.execPath, [path.join(ROOT, 'build.mjs')], { stdio:'inherit'
 fs.rmSync(PKG, { recursive:true, force:true });
 fs.cpSync(path.join(SRC, 'contents'), path.join(PKG, 'contents'), { recursive:true });
 fs.copyFileSync(path.join(DIST, 'index.html'), path.join(PKG, 'contents', 'gcdatlas.html'));
+// Extract tour definitions dynamically from source files
+const toursSrc = fs.readFileSync(path.join(ROOT, 'src', '08t-tours.js'), 'utf8') + '\n' +
+                 fs.readFileSync(path.join(ROOT, 'src', '09f-features.js'), 'utf8');
+const tourRe = /id:\s*(?:\x27((?:[^\x27\\]|\\.)*)\x27|"((?:[^"\\]|\\.)*)"),\s*name:\s*(?:\x27((?:[^\x27\\]|\\.)*)\x27|"((?:[^"\\]|\\.)*)"),\s*blurb:\s*(?:\x27((?:[^\x27\\]|\\.)*)\x27|"((?:[^"\\]|\\.)*)")/g;
+const tours = [];
+let tm;
+while ((tm = tourRe.exec(toursSrc)) !== null) {
+  const id = tm[1] ?? tm[2];
+  const name = (tm[3] ?? tm[4]).replace(/\\(.)/g, '$1');
+  const blurb = (tm[5] ?? tm[6]).replace(/\\(.)/g, '$1');
+  const title = name[0].toUpperCase() + name.slice(1);
+  const text = blurb ? `${title} (${blurb})` : title;
+  tours.push({ text, value: id });
+}
+const saverIdx = tours.findIndex(t => t.value === 'saver');
+if (saverIdx > 0) {
+  const [saver] = tours.splice(saverIdx, 1);
+  tours.unshift(saver);
+}
+
+fs.writeFileSync(path.join(SRC, 'contents', 'ui', 'tours.json'), JSON.stringify(tours, null, 4) + '\n');
+fs.writeFileSync(path.join(PKG, 'contents', 'ui', 'tours.json'), JSON.stringify(tours, null, 4) + '\n');
+
 // the plugin carries the site's version, so a bug report names the build
 const meta = JSON.parse(fs.readFileSync(path.join(SRC, 'metadata.json'), 'utf8'));
 meta.KPlugin.Version = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
@@ -27,7 +50,7 @@ execFileSync('tar', ['-czf', ARCHIVE, '-C', PKG, 'metadata.json', 'contents']);
 
 // check the result: every file in place, at the archive root, and the page opened in wallpaper mode
 const listed = execFileSync('tar', ['-tzf', ARCHIVE], { encoding:'utf8' }).split('\n').filter(Boolean).map(f => f.replace(/^\.\//, ''));
-const need = ['metadata.json', 'contents/ui/main.qml', 'contents/ui/config.qml', 'contents/config/main.xml', 'contents/gcdatlas.html'];
+const need = ['metadata.json', 'contents/ui/main.qml', 'contents/ui/config.qml', 'contents/ui/tours.json', 'contents/config/main.xml', 'contents/gcdatlas.html'];
 const missing = need.filter(f => !listed.includes(f));
 const problems = [];
 if (missing.length) problems.push('missing from the archive: ' + missing.join(', '));

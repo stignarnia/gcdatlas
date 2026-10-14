@@ -137,8 +137,10 @@ document.body.classList.add('saver'); $('#saverHud').hidden = embedded; if (!emb
   if (embedded) hideHint();
   else try { if (document.fullscreenEnabled && !document.fullscreenElement){ SAVER.fs = true; document.documentElement.requestFullscreen().catch(() => { SAVER.fs = false; }); } } catch (e) {}
   SAVER.prevTravel = SET.travel; if (SET.travel === 'warp') SET.travel = 'quick';
-  TOURS.find(t => t.id === 'saver').stops = saverStops();
-  useTour('saver'); tween = null; flyMove = null; if (flight) finishFlightHere();
+  const tourChoice = (WALLPAPER && URLQ.get('tour')) || 'saver';
+  const validTour = TOURS.find(t => t.id === tourChoice) ? tourChoice : 'saver';
+  if (validTour === 'saver') TOURS.find(t => t.id === 'saver').stops = saverStops();
+  useTour(validTour); tween = null; flyMove = null; if (flight) finishFlightHere();
   tour.on = true; tourGo(TOUR[0]); updateModeUI();
   if (!embedded) music.gesture();
 }
@@ -176,6 +178,13 @@ addEventListener('keydown', e => {
 }, { capture:true });
 document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && SAVER.on && performance.now() - SAVER.startAt > 1500) stopSaver(); });
 $('#btnSaver').addEventListener('click', () => startSaver());
+function setWallpaperTour(id){
+  const tid = (typeof TOURS !== 'undefined' && TOURS.find(t => t.id === id)) ? id : 'saver';
+  if (tid === 'saver') TOURS.find(t => t.id === 'saver').stops = saverStops();
+  useTour(tid); tween = null; flyMove = null; if (flight) finishFlightHere();
+  tour.on = true; tourGo(TOUR[0]); updateModeUI();
+}
+window.setWallpaperTour = setWallpaperTour;
 // the wallpaper starts the screensaver by itself, once every later file has set itself up
 if (WALLPAPER) setTimeout(() => startSaver({ embedded:true }), 0);
 let saverT = 0;

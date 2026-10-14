@@ -8,6 +8,7 @@ import org.kde.plasma.wallpapers.image as PlasmaWallpaper
 WallpaperItem {
     id: root
 
+    readonly property string tour: (root.configuration && root.configuration.Tour) ? root.configuration.Tour : "saver"
     readonly property string travel: (root.configuration && root.configuration.Travel === "quick") ? "quick" : "cinematic"
     readonly property int fps: (root.configuration && root.configuration.Fps) ? Math.max(10, Math.min(60, root.configuration.Fps)) : 30
     readonly property bool pauseEnabled: root.configuration ? root.configuration.PauseWhenCovered : true
@@ -20,6 +21,9 @@ WallpaperItem {
 
     function wallpaperUrl() {
         var base = Qt.resolvedUrl("../gcdatlas.html") + "?wallpaper=1&travel=" + root.travel + "&fps=" + root.fps;
+        if (root.tour && root.tour !== "saver") {
+            base += "&tour=" + encodeURIComponent(root.tour);
+        }
         if (root.titlePos && root.titlePos !== "none") {
             base += "&title=" + encodeURIComponent(root.titlePos);
         }
@@ -81,10 +85,16 @@ WallpaperItem {
                 root.applyFreeze();
                 web.runJavaScript("if (window.setWallpaperTitlePos) { window.setWallpaperTitlePos('" + root.titlePos + "'); }");
                 web.runJavaScript("if (window.setWallpaperTextSize) { window.setWallpaperTextSize('" + root.textSize + "'); }");
+                if (root.tour && root.tour !== "saver") {
+                    web.runJavaScript("if (window.setWallpaperTour) { window.setWallpaperTour('" + root.tour + "'); }");
+                }
             }
         }
     }
 
+    onTourChanged: {
+        web.runJavaScript("if (window.setWallpaperTour) { window.setWallpaperTour('" + root.tour + "'); } else { window.location.href = '" + root.wallpaperUrl() + "'; }");
+    }
     onTravelChanged: {
         web.url = root.wallpaperUrl();
     }

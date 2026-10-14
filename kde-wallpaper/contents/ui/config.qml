@@ -10,6 +10,7 @@ Kirigami.FormLayout {
     property var configDialog
     property var wallpaperConfiguration
 
+    property string cfg_Tour
     property string cfg_Travel
     property int cfg_Fps
     property alias cfg_PauseWhenCovered: pause.checked
@@ -17,6 +18,29 @@ Kirigami.FormLayout {
     property string cfg_TextSize
     property alias formLayout: root
 
+    QQC2.ComboBox {
+        id: tourCombo
+        Kirigami.FormData.label: "Tour:"
+        textRole: "text"
+        valueRole: "value"
+        model: []
+        currentIndex: Math.max(0, indexOfValue(root.cfg_Tour))
+        onActivated: root.cfg_Tour = currentValue
+
+        Component.onCompleted: {
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", Qt.resolvedUrl("tours.json"));
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === XMLHttpRequest.DONE && (xhr.status === 200 || xhr.status === 0)) {
+                    try {
+                        tourCombo.model = JSON.parse(xhr.responseText);
+                        tourCombo.currentIndex = Math.max(0, tourCombo.indexOfValue(root.cfg_Tour));
+                    } catch (e) {}
+                }
+            };
+            xhr.send();
+        }
+    }
     QQC2.ComboBox {
         Kirigami.FormData.label: "Travel between places:"
         textRole: "text"

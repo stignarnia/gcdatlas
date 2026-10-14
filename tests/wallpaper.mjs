@@ -56,6 +56,19 @@ if (!titleCheck.initialHidden || !titleCheck.shown || !titleCheck.hiddenAgain) {
   bad.push("wallpaper title position/size was not applied correctly: " + JSON.stringify(titleCheck));
 }
 
+// dynamic wallpaper tour update (via window.setWallpaperTour)
+const tourCheck = await page.evaluate(() => {
+  window.setWallpaperTour('earth');
+  const t1 = window.__cosmos.tourId;
+  const stops1 = window.__cosmos.TOUR.length;
+  window.setWallpaperTour('saver');
+  const t2 = window.__cosmos.tourId;
+  return { t1, stops1, t2 };
+});
+if (tourCheck.t1 !== 'earth' || tourCheck.stops1 !== 30 || tourCheck.t2 !== 'saver') {
+  bad.push('setWallpaperTour was not applied correctly: ' + JSON.stringify(tourCheck));
+}
+
 // freeze / unfreeze control halts and resumes rendering
 const freezeCheck = await page.evaluate(async () => {
   window.setFreeze(true);
