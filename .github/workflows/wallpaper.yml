@@ -24,6 +24,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -63,17 +65,24 @@ jobs:
         with:
           name: gcdatlas-plasma-wallpaper
           path: dist
-      - name: Publish the release of this version
+      - name: release notes
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          TAG="v$VERSION"
-          FILE=dist/gcdatlas-plasma-wallpaper.tar.gz
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$FILE" --clobber
+          awk -v v="$VERSION" '
+            $0 ~ "^## \\[" v "\\]" { printing=1; next }
+            $0 ~ "^## \\[" { if (printing) exit }
+            printing { print }
+          ' docs/CHANGELOG.md > dist/notes.md
+      - name: publish release
+        run: |
+          VERSION="v$(node -p "require('./package.json').version")"
+          TAR="dist/gcdatlas-plasma-wallpaper.tar.gz"
+          NOTES="dist/notes.md"
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "Release $VERSION exists; uploading asset and updating notes"
+            gh release upload "$VERSION" "$TAR" --clobber
+            gh release edit "$VERSION" --notes-file "$NOTES"
           else
-            # the notes are this version's section of docs/CHANGELOG.md
-            awk -v v="$VERSION" '$0 ~ "^## " v " " {on=1; next} /^## / {on=0} on' docs/CHANGELOG.md > notes.md
-            [ -s notes.md ] || echo "gcdatlas $VERSION. See docs/CHANGELOG.md." > notes.md
-            printf '\n**KDE Plasma wallpaper:** download `gcdatlas-plasma-wallpaper.tar.gz` below and see [docs/WALLPAPER.md](https://github.com/%s/blob/main/docs/WALLPAPER.md) to install it.\n' "$GITHUB_REPOSITORY" >> notes.md
-            gh release create "$TAG" "$FILE" --title "gcdatlas $VERSION" --notes-file notes.md --target "$GITHUB_SHA"
+            echo "Creating release $VERSION"
+            gh release create "$VERSION" "$TAR" --title "$VERSION" --notes-file "$NOTES"
           fi
