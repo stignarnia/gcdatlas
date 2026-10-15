@@ -1,0 +1,88 @@
+# Tests the site and builds the KDE Plasma wallpaper (docs/WALLPAPER.md).
+# Every pull request gets the wallpaper archive as a downloadable artifact of its run.
+# Every push to main publishes it as the GitHub Release of the version in package.json (vX.Y.Z),
+# creating that release the first time and refreshing its file afterwards.
+# The site itself is still deployed by Vercel; this workflow does not touch it.
+name: wallpaper
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wallpaper-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm test
+
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      # build.mjs and the packager need no dependencies
+      - run: npm run wallpaper
+      - uses: actions/upload-artifact@v7
+        with:
+          name: gcdatlas-plasma-wallpaper
+          path: dist/gcdatlas-plasma-wallpaper.tar.gz
+          if-no-files-found: error
+
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [test, package]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: gcdatlas-plasma-wallpaper
+          path: dist
+      - name: release notes
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          awk -v v="$VERSION" '
+            $0 ~ "^## \\[" v "\\]" { printing=1; next }
+            $0 ~ "^## \\[" { if (printing) exit }
+            printing { print }
+          ' docs/CHANGELOG.md > dist/notes.md
+      - name: publish release
+        run: |
+          VERSION="v$(node -p "require('./package.json').version")"
+          TAR="dist/gcdatlas-plasma-wallpaper.tar.gz"
+          NOTES="dist/notes.md"
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "Release $VERSION exists; uploading asset and updating notes"
+            gh release upload "$VERSION" "$TAR" --clobber
+            gh release edit "$VERSION" --notes-file "$NOTES"
+          else
+            echo "Creating release $VERSION"
+            gh release create "$VERSION" "$TAR" --title "$VERSION" --notes-file "$NOTES"
+          fi
