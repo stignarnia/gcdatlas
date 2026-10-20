@@ -5,6 +5,28 @@
      numbers with units. The newest version comes first and opens by itself; its number must match package.json (tests/smoke.mjs checks it).
      Every detail stays in docs/CHANGELOG.md, which the panel links to. -->
 
+## 0.23.0 · 18 Oct 2026 · Three moons and two pairs of stars
+- Saturn's moons Tethys, Dione and Rhea join the atlas, each with its own real markings: Tethys's giant crater Odysseus and its 2,000 km canyon, Dione's bright ice cliffs, Rhea's young ray crater Inktomi.
+- All three are where they really are along their orbits, so they pass through Saturn's shadow at the real times.
+- Capella and Spica are drawn as the pairs of stars they are, on their real orbits, sped up: two yellow giants, and two hot blue stars, the bigger one bulging at its equator from its fast spin.
+
+## 0.22.0 · 18 Oct 2026 · Las Vegas
+- Las Vegas in 3D as it is today, with its traffic, the planes at Harry Reid Airport, local time and real weather.
+- The Sphere with shows on its outside, the High Roller lit at night, the Luxor's pyramid and its beam of light, the STRAT and the Fremont Street canopy.
+- The Fountains of Bellagio rise on their real schedule: every 30 minutes in the afternoon, every 15 minutes from 8 pm to midnight.
+- What is being built right now: Hard Rock's guitar-shaped tower, topped out in May, and the Athletics' ballpark with its first two roof arches.
+
+## 0.21.0 · 18 Oct 2026 · Every Messier globular cluster
+- 25 more globular clusters, so all 29 in Messier's list are here: from M71, so loose it was long taken for an open cluster, to M54, the heart of a small galaxy the Milky Way is pulling apart.
+- Each one is shaped by its real measurements: how tight its core is, how flat it is, and the colours of its stars.
+- Pease 1, the first planetary nebula found inside a globular cluster, glows among M15's stars.
+- Ganymede, Callisto, Canopus, Tau Ceti and eight small galaxies near ours now have their own places in the atlas, with their real sizes and shapes.
+- The Messier marathon tour grows to 79 stops. 82 of Messier's 110 objects are in so far.
+
+## 0.19.1 · 18 Oct 2026 · One of each
+- Behind the scenes: checks that stop the same star, nebula or galaxy from being added to the atlas twice.
+- Nothing changes on screen.
+
 ## 0.19.0 · 8 Oct 2026 · Six more cities
 - Hong Kong, San Francisco, Sydney, Rome, Los Angeles and Rio de Janeiro in 3D, in the same model style, with their traffic, planes, boats, local time and real weather.
 - Their landmarks in their real shapes and sizes: the Golden Gate Bridge, the Sydney Opera House, the Colosseum, St Peter's, the Hollywood sign and Christ the Redeemer.

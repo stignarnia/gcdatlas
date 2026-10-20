@@ -25,6 +25,23 @@ function namedStar(key, name, ra, dec, dist, R, T, extra = {}){
 }
 // a companion (star or planet) on a circular orbit around a host, radius a (ly), period P (sim seconds)
 function orbitAround(host, a, P, incl = 0, phase = 0){ return function(){ const th = phase + this.t*2*Math.PI/P; this.offset = M3.apply(host.R0, [a*Math.cos(th), a*Math.sin(th)*Math.sin(incl), -a*Math.sin(th)*Math.cos(incl)]); }; }
+// a companion on an oval orbit round its host, in the host's frame: semi-major axis a (ly), eccentricity e, periastron w degrees past the node,
+// period P (sim seconds); sets this.th, the companion's angle from the node
+function orbitKepler(host, a, P, e, w, phase = 0){ return function(){
+  const M = phase + this.t*2*Math.PI/P; let E = M; for (let k=0;k<6;k++) E -= (E - e*Math.sin(E) - M)/(1 - e*Math.cos(E));
+  const r = a*(1 - e*Math.cos(E)), u = 2*Math.atan2(Math.sqrt(1 + e)*Math.sin(E/2), Math.sqrt(1 - e)*Math.cos(E/2)) + w*DEG;
+  this.th = u; this.offset = M3.apply(host.R0, [r*Math.cos(u), 0, -r*Math.sin(u)]); }; }
+// the frame of a binary's orbit as we see it from Earth, from its visual orbit: inclination i and the position angle of the ascending node Om
+// (degrees; Om from north through east, the node where the companion moves away from us). Local y is the orbit's pole (the way it turns) and x
+// the node, so orbitAround(host, a, P) with no tilt puts the companion th past the node, where the visual orbit has it (i over 90: it goes round
+// clockwise on our sky). Both pairs below turn in step with their orbits, so it is each star's own frame too.
+function binaryFrame(pos, i, Om){
+  const s = V.norm(pos), ncp = eqToGal([0, 0, 1]);
+  const N = V.norm(V.sub(ncp, V.mul(s, V.dot(ncp, s)))), E = V.norm(V.cross(ncp, s));
+  const X = V.add(V.mul(N, Math.cos(Om*DEG)), V.mul(E, Math.sin(Om*DEG))), p = V.add(V.mul(N, -Math.sin(Om*DEG)), V.mul(E, Math.cos(Om*DEG)));
+  const e2 = V.add(V.mul(p, Math.cos(i*DEG)), V.mul(s, Math.sin(i*DEG)));   // (the way the companion moves at the node)
+  return [...X, ...V.cross(X, e2), ...V.mul(e2, -1)];
+}
 
 // ---------------------------------------------------------------- the nearest stars
 const alphaCen = namedStar('alphacen', 'Alpha Centauri', hms(14,39,36.5), dms(-60,50,2), 4.37, 1.2234, 5790, { label:'α Centauri A',
@@ -85,14 +102,20 @@ namedStar('deneb', 'Deneb', hms(20,41,25.9), dms(45,16,49), 2615, 203, 8525, { t
 namedStar('arcturus', 'Arcturus', hms(14,15,39.7), dms(19,10,57), 36.7, 25.4, 4286, { type:'orange giant · brightest star of the northern sky',
   fact:'An old star that has run out of hydrogen in its core and swollen to 25 times the Sun\'s width: a preview of the Sun in about 5 billion years.', star:{ cells:14, act:0.05, corona:0.2 }, farLum:0.9, labelRange:900,
   readout:() => '36.7 light-years · moving fast through the Milky Way\'s disk' });
-namedStar('canopus', 'Canopus', hms(6,23,57.1), dms(-52,41,45), 310, 71, 7400, { type:'bright giant · second-brightest star', fact:'The second-brightest star in the night sky, used by spacecraft to orient themselves.',
-  star:{ cells:22, act:0, corona:0.3 }, farLum:0.9, labelRange:4000, atlas:false, readout:() => '310 light-years · 71 solar radii' });
+// (Canopus: Hipparcos 2007 distance; radius and temperature from VLTI/PIONIER, Domiciano de Souza et al. 2021)
+namedStar('canopus', 'Canopus', hms(6,23,57.1), dms(-52,41,45), 310, 73.2, 7660, { type:'white bright giant · second-brightest star in the night sky',
+  fact:'The second-brightest star in the night sky, a white giant 73 times the Sun\'s width and about 16,600 times as luminous. Since Mariner 4 in 1964, spacecraft have steered by it to keep themselves pointed the right way.',
+  star:{ cells:22, act:0, corona:0.3 }, farLum:0.9, labelRange:4000, aka:'alpha carinae alf car hd 45348 hr 2326 hip 30438',
+  readout:() => '310 light-years · 73 times the Sun\'s radius\nabout 16,600 times as luminous as the Sun, 7,660 K' });
 namedStar('aldebaran', 'Aldebaran', hms(4,35,55.2), dms(16,30,33), 65.3, 45.1, 3910, { type:'orange giant · the eye of the Bull', fact:'An orange giant 44 times wider than the Sun. Pioneer 10 is heading its way and will pass it in about 2 million years.',
   star:{ cells:10, act:0, corona:0.2 }, farLum:0.9, labelRange:1500, readout:() => '65 light-years · 44 solar radii' });
 namedStar('barnard', "Barnard's Star", hms(17,57,48.5), dms(4,41,36), 5.96, 0.187, 3134, { type:'red dwarf · fastest-moving star in our sky', fact:'An ancient red dwarf racing across the sky, the second-closest star system to the Sun. Four small planets were found around it in 2024-25.',
   star:{ cells:30, act:0.7, prom:0.5 }, bound:4, farLum:0.25, labelRange:300, readout:() => '5.96 light-years · about 10 billion years old' });
-namedStar('tauceti', 'Tau Ceti', hms(1,44,4.1), dms(-15,56,15), 11.9, 0.793, 5344, { type:'nearby Sun-like star', fact:'A quiet, Sun-like star 12 light-years away, a favourite of science fiction and early searches for alien radio signals.',
-  star:{ cells:36, act:0.2 }, farLum:0.6, labelRange:500, atlas:false, readout:() => '11.9 light-years · a little smaller and cooler than the Sun' });
+// (Tau Ceti: radius and temperature from CHARA/MIRC-X, Korolik et al. 2023)
+namedStar('tauceti', 'Tau Ceti', hms(1,44,4.1), dms(-15,56,15), 11.9, 0.793, 5320, { type:'nearby Sun-like star',
+  fact:'A Sun-like star 11.9 light-years away, older than the Sun and poorer in metals. In 1960 it was one of the first two stars searched for alien radio signals, and four planets a few times Earth\'s mass may orbit it.',
+  star:{ cells:36, act:0.2 }, farLum:0.6, labelRange:500, aka:'tau cet 52 ceti hd 10700 hr 509 hip 8102 gj 71 gliese 71 project ozma',
+  readout:() => '11.9 light-years · 79% of the Sun\'s width, 5,320 K\n4 candidate planets, each at least 1.7 Earth masses' });
 const epsEri = namedStar('epseri', 'Epsilon Eridani', hms(3,32,55.8), dms(-9,27,30), 10.5, 0.735, 5084, { type:'young Sun-like star with debris belts', fact:'A young, active star about 500 million years old, ringed by belts of icy debris like a young Solar System.',
   star:{ cells:36, act:0.8 }, bound:3, farLum:0.6, labelRange:500, readout:() => '10.5 light-years · outer debris ring ~65 AU from the star' });
 // (the belts are measured in units of the outer belt's radius, rad:RB: a point's brightness is spread over the size it is given, and over
@@ -100,12 +123,42 @@ const epsEri = namedStar('epseri', 'Epsilon Eridani', hms(3,32,55.8), dms(-9,27,
 { const n = Math.round(2500*QUALITY), RB = 64*AU_LY, ps = makePS(n); for (let i=0;i<n;i++){ const a = rnd()*6.283, r = (rnd() < 0.8 ? 64 + rndn()*5 : 3 + rndn()*0.3)*AU_LY/RB; ps.a.set([r*Math.cos(a), rndn()*0.3*AU_LY/RB, r*Math.sin(a), 0.6 + rnd()], i*4); ps.c.set([0.8, 0.72, 0.62, 0], i*4); } ps.upload('ac');
   epsEri.particles.push({ ps, prog:'ptBasic', mode:0, sb:0.08, size:1.3, cap:0.5, rad:RB, vis:() => smooth(3*AU_LY, 20*AU_LY, viewDist()) });
   epsEri.particleVis = () => 1; epsEri.views = [{d:[0.3, 0.55, 1], k:1.3, hold:8, drift:0.04}, {d:[0.3, 0.9, 0.4], k:0.7*64*AU_LY/epsEri.rad*3, hold:9, drift:0.02}]; }
-namedStar('capella', 'Capella', hms(5,16,41.4), dms(45,59,53), 42.9, 11.98, 4970, { type:'pair of yellow giants', fact:'Two giant stars, each about 2.5 times the Sun\'s mass, circling each other every 104 days.',
-  star:{ cells:14, act:0.1, corona:0.2 }, farLum:0.9, labelRange:1500, atlas:false, readout:() => '42.9 light-years · two giants 0.74 AU apart' });
+// Capella: two giants on their real orbit as we see it (Torres et al. 2015: P 104.02 days, a 0.7427 AU, i 137.156 deg, node 40.522 deg; circular),
+// sped up to a lap in 30 s. Aa is the cooler, heavier one, a clump giant burning helium in its core; Ab, hotter and a little brighter to the eye,
+// is crossing the Hertzsprung gap. (The papers give Aa's orbit round Ab: Ab round Aa has the same node and tilt, half a lap on.)
+const capella = namedStar('capella', 'Capella', hms(5,16,41.4), dms(45,59,53), 42.9, 11.98, 4970, { label:'Capella Aa', type:'yellow giants · a pair circling every 104 days',
+  R0:binaryFrame(radec(hms(5,16,41.4), dms(45,59,53), 42.9), 137.156, 40.522),
+  fact:'Two giant stars, each about 2.5 times the Sun\'s mass, circling each other every 104 days, 0.74 AU apart. The cooler one, 12 times the Sun\'s width, is near the end of burning helium in its core; the hotter, 9 times the Sun\'s width, has left the main sequence and is still swelling toward the red giant stage.',
+  star:{ cells:14, act:0.1, corona:0.2 }, farLum:0.9, labelRange:1500, noImpostor:false, aka:'alpha aurigae alf aur hd 34029 hr 1708 hip 24608',
+  views:[{d:[0.3, 0.35, 1], k:1.25, hold:8, drift:0.04},
+    // (the pair round their centre of mass, which the camera follows: from above their orbit, then as we see it from Earth)
+    {d:[0.2, 1, 0.3], k:6, off:() => M3.applyT(capella.R0, V.mul(BYKEY.capellaab.offset, 0.4915/capella.rad)), hold:10, drift:0.02},
+    {dirFn:() => V.norm(V.mul(capella.pos, -1)), k:6, off:() => M3.applyT(capella.R0, V.mul(BYKEY.capellaab.offset, 0.4915/capella.rad)), hold:10, drift:0}],
+  readout:() => '42.9 light-years · two giants 0.74 AU apart, 4,970 K and 5,730 K\nsped up here: one lap in 30 s, really 104 days' });
+const capellaAb = addStar({ key:'capellaab', name:'Capella Ab', label:'Capella Ab', parent:capella, offset:[0, 0, 0], R:8.83, T:5730, star:{ cells:16, act:0.2, corona:0.2 }, atlas:false,
+  noImpostor:false, farLum:0.8, labelRange:0.003, labelMin:2e-6, update:orbitAround(capella, 0.7427*AU_LY, 30, 0, 0), type:'yellow giant · the hotter star of Capella',
+  fact:'The hotter of Capella\'s two giants, 2.48 times the Sun\'s mass and 9 times its width. It has left the main sequence and is swelling toward the red giant stage, a short phase in which few stars are caught.', readout:() => '5,730 K · 73 times the Sun\'s luminosity\nspins in 8.5 days, 12 times faster than it orbits' });
+capellaAb.update.call(capellaAb);
 namedStar('altair', 'Altair', hms(19,50,47), dms(8,52,6), 16.7, 1.85, 7550, { type:'rapidly rotating A star', fact:'Spins once every 9 hours, so fast it is squashed 20% flatter at the poles. Interferometers have imaged its bright poles and dim equator.',
   star:{ cells:60, act:0, obl:0.25, corona:0.2 }, farLum:0.9, labelRange:700, spinDays:0.37, readout:() => '16.7 light-years · equator spins at 286 km/s' });
-namedStar('spica', 'Spica', hms(13,25,11.6), dms(-11,9,41), 250, 7.47, 25300, { type:'hot blue binary', fact:'Two hot blue stars so close they are pulled into egg shapes, whirling around each other every four days.',
-  star:{ cells:60, act:0, corona:0.4 }, farLum:1, labelRange:4000, atlas:false, readout:() => '250 light-years · 25,300 K' });
+// Spica: two hot blue stars 0.131 AU apart on their real, slightly oval orbit (Tkachenko et al. 2016: P 4.0145 days, a 28.2 solar radii, e 0.133,
+// i 63.1 deg; clockwise on our sky, so 116.9 deg as visual orbits count it; the line of nodes at 131.6 deg, Herbison-Evans et al. 1971), sped
+// up to a lap in 8 s. Spica A spins about twice per orbit: it is drawn 6% flatter at the poles than across and 3% longer toward Spica B
+// (7.1 and 7.54 solar radii, and toward B 7.5 at their mean distance, 7.9 at their closest; the Roche model of Tkachenko's fit), turning to
+// keep its long axis on B. B is nearly round.
+const spica = namedStar('spica', 'Spica', hms(13,25,11.6), dms(-11,9,41), 250, 7.54, 25300, { label:'Spica A', type:'hot blue stars · a pair circling every four days',
+  R0:binaryFrame(radec(hms(13,25,11.6), dms(-11,9,41), 250), 116.9, 131.6),
+  fact:'Two hot blue stars 0.13 AU apart, closer than Mercury is to the Sun, circling each other every four days. The bigger one, 11 times the Sun\'s mass, spins fast enough to bulge about 6% at its equator, and its partner\'s pull stretches it a few per cent more; it will probably end as a supernova.',
+  star:{ cells:60, act:0, corona:0.3, obl:0.062, tide:0.03 }, bound:2.4, farLum:1, labelRange:4000, noImpostor:false, aka:'alpha virginis alf vir hd 116658 hr 5056 hip 65474',
+  // (close on A from 35 degrees above the orbit, which B passes under; then the pair round their centre of mass from above, and as we see them)
+  views:[{d:[0.3, 0.7, 1], k:1.5, hold:8, drift:0.04},
+    {d:[0.2, 1, 0.3], k:3.5, off:() => M3.applyT(spica.R0, V.mul(BYKEY.spicab.offset, 0.387/spica.rad)), hold:10, drift:0.02},
+    {dirFn:() => V.norm(V.mul(spica.pos, -1)), k:6, off:() => M3.applyT(spica.R0, V.mul(BYKEY.spicab.offset, 0.387/spica.rad)), hold:10, drift:0}],
+  readout:() => '250 light-years · 25,300 K and 20,900 K\nsped up here: one lap in 8 s, really 4.01 days' });
+const spicaB = addStar({ key:'spicab', name:'Spica B', label:'Spica B', parent:spica, offset:[0, 0, 0], R:3.74, T:20900, star:{ cells:60, act:0, corona:0.2 }, bound:2.4, atlas:false,
+  noImpostor:false, farLum:0.7, labelRange:0.004, labelMin:1e-6, type:'hot blue star · the smaller of Spica\'s pair', fact:'The smaller of Spica\'s two stars: 7 times the Sun\'s mass, 3.7 times its width, and nearly round.', readout:() => '20,900 K · about 2,000 times the Sun\'s luminosity' });
+{ const orb = orbitKepler(spica, 28.2*RSUN*KM, 8, 0.133, 136); spicaB.update = function(){ orb.call(this); spica.rot = M3.mul(spica.R0, M3.rotY(this.th)); this.rot = M3.mul(spica.R0, M3.rotY(this.th + Math.PI)); }; }
+spicaB.update();
 // TRAPPIST-1 and its seven Earth-sized planets (periods scaled: 1.5 days -> 6 s)
 const trappist = namedStar('trappist1', 'TRAPPIST-1', hms(23,6,29), dms(-5,2,29), 40.7, 0.1192, 2566, { type:'ultracool dwarf with seven Earth-sized planets',
   fact:'A star barely larger than Jupiter with seven rocky planets packed inside an orbit smaller than Mercury\'s. Three sit where liquid water is possible.',
