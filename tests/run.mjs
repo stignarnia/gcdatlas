@@ -68,36 +68,79 @@ async function getBaseRef() {
   }
 }
 
-async function runOnBase(testRelPath, baseRef) {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gcdatlas-main-'));
-  try {
-    execFileSync('git', ['worktree', 'add', '--detach', tmpDir, baseRef], { cwd: ROOT, stdio: 'ignore' });
-
-    // Link node_modules so Playwright and deps are available without running npm install in worktree
-    const srcModules = path.join(ROOT, 'node_modules');
-    const dstModules = path.join(tmpDir, 'node_modules');
-    if (fs.existsSync(srcModules) && !fs.existsSync(dstModules)) {
+// Runs the failed test on baseRef to confirm whether the failure already exists on main.
+// To avoid wasting runner minutes, as soon as a matching failure signature is emitted by main,
+// the process is terminated early since upstream reproduction is already proven.
+function runOnBaseStreaming(testRelPath, baseRef, targetErrors = []) {
+  return new Promise((resolve) => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gcdatlas-main-'));
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
       try {
-        fs.symlinkSync(srcModules, dstModules, 'junction');
+        execFileSync('git', ['worktree', 'remove', '--force', tmpDir], { cwd: ROOT, stdio: 'ignore' });
       } catch {}
-    }
+      try {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      } catch {}
+    };
 
-    // Build main
-    spawnSync('node', ['build.mjs'], { cwd: tmpDir, stdio: 'ignore' });
-
-    // Run the specific test on main
-    let output = '';
-    const res = spawnSync('node', [testRelPath], { cwd: tmpDir, encoding: 'utf8' });
-    output = (res.stdout || '') + (res.stderr || '');
-    return { code: res.status ?? 1, output };
-  } catch (e) {
-    return { code: 1, output: String(e) };
-  } finally {
     try {
-      execFileSync('git', ['worktree', 'remove', '--force', tmpDir], { cwd: ROOT, stdio: 'ignore' });
-    } catch {}
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  }
+      execFileSync('git', ['worktree', 'add', '--detach', tmpDir, baseRef], { cwd: ROOT, stdio: 'ignore' });
+
+      // Link node_modules so Playwright and dependencies are immediately available
+      const srcModules = path.join(ROOT, 'node_modules');
+      const dstModules = path.join(tmpDir, 'node_modules');
+      if (fs.existsSync(srcModules) && !fs.existsSync(dstModules)) {
+        try {
+          fs.symlinkSync(srcModules, dstModules, 'junction');
+        } catch {}
+      }
+
+      // Build main
+      spawnSync('node', ['build.mjs'], { cwd: tmpDir, stdio: 'ignore' });
+
+      let output = '';
+      let confirmedMatch = false;
+      const proc = spawn('node', [testRelPath], { cwd: tmpDir, stdio: ['ignore', 'pipe', 'pipe'] });
+
+      const checkChunk = (chunk) => {
+        const text = chunk.toString();
+        output += text;
+        process.stdout.write(text);
+
+        // Check if an error signature matching the branch failure has appeared on main
+        const currentErrors = extractErrorSignatures(output);
+        const hasMatch = targetErrors.some(e => currentErrors.includes(e));
+        if (hasMatch && !confirmedMatch) {
+          confirmedMatch = true;
+          console.log(`\n[Verified upstream failure on ${baseRef}: matching error found early. Terminating base run.]`);
+          proc.kill('SIGTERM');
+          setTimeout(() => {
+            try { proc.kill('SIGKILL'); } catch {}
+          }, 2000);
+        }
+      };
+
+      proc.stdout.on('data', checkChunk);
+      proc.stderr.on('data', checkChunk);
+
+      proc.on('close', (code) => {
+        cleanup();
+        resolve({ code: confirmedMatch ? 1 : (code ?? 1), output, confirmedMatch });
+      });
+
+      proc.on('error', (err) => {
+        cleanup();
+        resolve({ code: 1, output: String(err), confirmedMatch: false });
+      });
+
+    } catch (err) {
+      cleanup();
+      resolve({ code: 1, output: String(err), confirmedMatch: false });
+    }
+  });
 }
 
 async function main() {
@@ -152,17 +195,16 @@ async function main() {
     }
 
     console.log(`Checking ${fail.file} on ${baseRef}...`);
-    const baseRun = await runOnBase(fail.file, baseRef);
+    const baseRun = await runOnBaseStreaming(fail.file, baseRef, fail.errors);
 
     if (baseRun.code !== 0) {
       const baseErrors = extractErrorSignatures(baseRun.output);
-      // Check if branch errors overlap or match base errors
       const matches = fail.errors.filter(e => baseErrors.includes(e));
-      if (matches.length > 0 || baseErrors.length > 0) {
+      if (baseRun.confirmedMatch || matches.length > 0 || baseErrors.length > 0) {
         upstreamIssues.push({
           file: fail.file,
           errors: fail.errors,
-          baseErrors
+          baseErrors: baseErrors.length ? baseErrors : fail.errors
         });
         continue;
       }
