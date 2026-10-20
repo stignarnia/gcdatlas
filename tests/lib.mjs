@@ -15,17 +15,7 @@ export const OUT = path.join(ROOT, 'tests', 'out');
 // url: over http, for what loads only there, such as the Earth's images: tests/earth.mjs
 export async function openPage({ width = 1280, height = 800, phone = false, fade = false, now = null, freeze = false, settings = null, init = null, url = null, query = '' } = {}){
   if (!fs.existsSync(path.join(ROOT, 'dist', 'index.html'))) throw new Error('build first: node build.mjs');
-  const browser = await chromium.launch({
-    args: [
-      '--use-angle=swiftshader',
-      '--enable-unsafe-swiftshader',
-      '--ignore-gpu-blocklist',
-      '--num-raster-threads=4',
-      '--enable-zero-copy',
-      '--disable-backgrounding-occluded-windows',
-      '--disable-renderer-backgrounding'
-    ]
-  });
+  const browser = await chromium.launch({ args:['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
   const context = await browser.newContext(phone ? { viewport:{ width:390, height:844 }, deviceScaleFactor:2, isMobile:true, hasTouch:true } : { viewport:{ width, height } });
   const page = await context.newPage();
   if (now != null) await page.clock.setFixedTime(now);
