@@ -1,8 +1,8 @@
 // Orchestrator for gcdatlas test suite.
-// 1. Runs all test files unconditionally (does not abort early on failure).
-// 2. Collects all errors and exit codes across the entire suite.
+// 1. Runs all test files unconditionally with a 2-worker pool (utilizing runner's 2 vCPUs).
+// 2. Worker 1 runs tests/earth.mjs immediately, Worker 2 runs other tests sequentially.
 // 3. For any test that fails, compares the failure against origin/main in an isolated worktree.
-// 4. If an identical failure already exists on main, it is marked as an upstream failure (pass).
+// 4. Preloads a real-time flush hook on baseRef to terminate early the moment an upstream error is confirmed.
 // 5. Exits with 0 if all failures are known upstream bugs, or 1 if any new regression exists.
 
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
@@ -13,12 +13,13 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
+// earth.mjs is placed first so Worker 1 picks it up immediately while Worker 2 runs the other 7 tests
 const TESTS = [
+  'tests/earth.mjs',
   'tests/preview.mjs',
   'tests/smoke.mjs',
   'tests/spacex.mjs',
   'tests/mobile.mjs',
-  'tests/earth.mjs',
   'tests/motion.mjs',
   'tests/pipsmooth.mjs',
   'tests/wallpaper.mjs'
@@ -44,6 +45,26 @@ function runCmd(command, args, cwd = ROOT, env = process.env) {
     proc.on('close', (code) => {
       resolve({ code: code ?? 1, output });
     });
+    proc.on('error', (err) => {
+      resolve({ code: 1, output: String(err) });
+    });
+  });
+}
+
+function runCmdBuffered(command, args, cwd = ROOT, env = process.env) {
+  return new Promise((resolve) => {
+    let output = '';
+    const proc = spawn(command, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
+
+    proc.stdout.on('data', (d) => { output += d.toString(); });
+    proc.stderr.on('data', (d) => { output += d.toString(); });
+
+    proc.on('close', (code) => {
+      resolve({ code: code ?? 1, output });
+    });
+    proc.on('error', (err) => {
+      resolve({ code: 1, output: String(err) });
+    });
   });
 }
 
@@ -51,6 +72,7 @@ function extractErrorSignatures(output) {
   return output
     .split('\n')
     .map(line => line.trim())
+    .map(line => line.startsWith('[EARLY_FAIL] ') ? line.replace('[EARLY_FAIL] ', '').trim() : line)
     .filter(line => line.startsWith('check:') || line.startsWith('timed out:') || line.startsWith('FAIL') || line.includes('Error:'));
 }
 
@@ -69,8 +91,9 @@ async function getBaseRef() {
 }
 
 // Runs the failed test on baseRef to confirm whether the failure already exists on main.
-// To avoid wasting runner minutes, as soon as a matching failure signature is emitted by main,
-// the process is terminated early since upstream reproduction is already proven.
+// Preloads an in-memory error flush hook so the instant an error or timeout occurs,
+// it is immediately emitted to stderr and matched against targetErrors, killing the base
+// run early and saving runner minutes.
 function runOnBaseStreaming(testRelPath, baseRef, targetErrors = []) {
   return new Promise((resolve) => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gcdatlas-main-'));
@@ -101,9 +124,32 @@ function runOnBaseStreaming(testRelPath, baseRef, targetErrors = []) {
       // Build main
       spawnSync('node', ['build.mjs'], { cwd: tmpDir, stdio: 'ignore' });
 
+      // Write preload flush hook
+      const hookPath = path.join(tmpDir, 'flush-hook.mjs');
+      const hookCode = `
+const origPush = Array.prototype.push;
+Array.prototype.push = function(...args) {
+  for (const arg of args) {
+    if (typeof arg === 'string' && (
+      arg.startsWith('timed out:') ||
+      arg.startsWith('check:') ||
+      arg.startsWith('FAIL') ||
+      arg.includes('Error:')
+    )) {
+      console.error('[EARLY_FAIL] ' + arg);
+    }
+  }
+  return origPush.apply(this, args);
+};
+`;
+      fs.writeFileSync(hookPath, hookCode);
+
       let output = '';
       let confirmedMatch = false;
-      const proc = spawn('node', [testRelPath], { cwd: tmpDir, stdio: ['ignore', 'pipe', 'pipe'] });
+      const proc = spawn('node', ['--import', hookPath, testRelPath], {
+        cwd: tmpDir,
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
 
       const checkChunk = (chunk) => {
         const text = chunk.toString();
@@ -112,10 +158,10 @@ function runOnBaseStreaming(testRelPath, baseRef, targetErrors = []) {
 
         // Check if an error signature matching the branch failure has appeared on main
         const currentErrors = extractErrorSignatures(output);
-        const hasMatch = targetErrors.some(e => currentErrors.includes(e));
-        if (hasMatch && !confirmedMatch) {
+        const match = targetErrors.find(e => currentErrors.includes(e));
+        if (match && !confirmedMatch) {
           confirmedMatch = true;
-          console.log(`\n[Verified upstream failure on ${baseRef}: matching error found early. Terminating base run.]`);
+          console.log(`\n[Verified upstream failure on ${baseRef}: matching error found early (${match}). Terminating base run.]`);
           proc.kill('SIGTERM');
           setTimeout(() => {
             try { proc.kill('SIGKILL'); } catch {}
@@ -151,23 +197,39 @@ async function main() {
     process.exit(1);
   }
 
-  console.log('\n--- Step 2: Running all tests unconditionally ---');
+  console.log('\n--- Step 2: Running all tests unconditionally (2 workers) ---');
+  const queue = [...TESTS];
   const results = [];
 
-  for (const testFile of TESTS) {
-    console.log(`\n>>> Running ${testFile}`);
-    const t0 = Date.now();
-    const res = await runCmd('node', [testFile]);
-    const duration = ((Date.now() - t0) / 1000).toFixed(1);
-    const errors = extractErrorSignatures(res.output);
-    results.push({
-      file: testFile,
-      code: res.code,
-      passed: res.code === 0,
-      duration,
-      errors
-    });
+  async function runWorker(workerId) {
+    while (queue.length > 0) {
+      const testFile = queue.shift();
+      console.log(`[Worker ${workerId}] >>> Starting ${testFile}`);
+      const t0 = Date.now();
+      const res = await runCmdBuffered('node', [testFile]);
+      const duration = ((Date.now() - t0) / 1000).toFixed(1);
+      const errors = extractErrorSignatures(res.output);
+      console.log(`[Worker ${workerId}] <<< Finished ${testFile} in ${duration}s (exit: ${res.code})`);
+      if (res.output.trim()) {
+        console.log(`--- [Worker ${workerId}] Output for ${testFile} ---\n${res.output.trim()}\n--- [End of ${testFile}] ---\n`);
+      }
+      results.push({
+        file: testFile,
+        code: res.code,
+        passed: res.code === 0,
+        duration,
+        errors
+      });
+    }
   }
+
+  const tStart = Date.now();
+  await Promise.all([runWorker(1), runWorker(2)]);
+  const step2Duration = ((Date.now() - tStart) / 1000).toFixed(1);
+  console.log(`Step 2 completed in ${step2Duration}s.`);
+
+  // Sort results by original TESTS order for consistent reporting
+  results.sort((a, b) => TESTS.indexOf(a.file) - TESTS.indexOf(b.file));
 
   const failedTests = results.filter(r => !r.passed);
 
@@ -200,7 +262,7 @@ async function main() {
     if (baseRun.code !== 0) {
       const baseErrors = extractErrorSignatures(baseRun.output);
       const matches = fail.errors.filter(e => baseErrors.includes(e));
-      if (baseRun.confirmedMatch || matches.length > 0 || baseErrors.length > 0) {
+      if (baseRun.confirmedMatch || matches.length > 0) {
         upstreamIssues.push({
           file: fail.file,
           errors: fail.errors,
