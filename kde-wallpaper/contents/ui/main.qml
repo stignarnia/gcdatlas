@@ -93,7 +93,7 @@ WallpaperItem {
     }
 
     onTourChanged: {
-        web.runJavaScript("if (window.setWallpaperTour) { window.setWallpaperTour('" + root.tour + "'); } else { window.location.href = '" + root.wallpaperUrl() + "'; }");
+        web.runJavaScript("if (window.setWallpaperTour) { window.setWallpaperTour('" + root.tour + "'); }");
     }
     onTravelChanged: {
         web.url = root.wallpaperUrl();
