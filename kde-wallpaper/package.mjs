@@ -37,6 +37,9 @@ if (saverIdx > 0) {
   tours.unshift(saver);
 }
 
+const jsContent = '.pragma library\nvar tours = ' + JSON.stringify(tours, null, 4) + ';\n';
+fs.writeFileSync(path.join(SRC, 'contents', 'ui', 'tours.js'), jsContent);
+fs.writeFileSync(path.join(PKG, 'contents', 'ui', 'tours.js'), jsContent);
 fs.writeFileSync(path.join(SRC, 'contents', 'ui', 'tours.json'), JSON.stringify(tours, null, 4) + '\n');
 fs.writeFileSync(path.join(PKG, 'contents', 'ui', 'tours.json'), JSON.stringify(tours, null, 4) + '\n');
 
@@ -50,7 +53,7 @@ execFileSync('tar', ['-czf', ARCHIVE, '-C', PKG, 'metadata.json', 'contents']);
 
 // check the result: every file in place, at the archive root, and the page opened in wallpaper mode
 const listed = execFileSync('tar', ['-tzf', ARCHIVE], { encoding:'utf8' }).split('\n').filter(Boolean).map(f => f.replace(/^\.\//, ''));
-const need = ['metadata.json', 'contents/ui/main.qml', 'contents/ui/config.qml', 'contents/ui/tours.json', 'contents/config/main.xml', 'contents/gcdatlas.html'];
+const need = ['metadata.json', 'contents/ui/main.qml', 'contents/ui/config.qml', 'contents/ui/tours.json', 'contents/ui/tours.js', 'contents/config/main.xml', 'contents/gcdatlas.html'];
 const missing = need.filter(f => !listed.includes(f));
 const problems = [];
 if (missing.length) problems.push('missing from the archive: ' + missing.join(', '));

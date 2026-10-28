@@ -2,6 +2,7 @@
 import QtQuick
 import QtQuick.Controls as QQC2
 import org.kde.kirigami as Kirigami
+import "tours.js" as ToursData
 
 Kirigami.FormLayout {
     id: root
@@ -23,23 +24,9 @@ Kirigami.FormLayout {
         Kirigami.FormData.label: "Tour:"
         textRole: "text"
         valueRole: "value"
-        model: []
+        model: ToursData.tours
         currentIndex: Math.max(0, indexOfValue(root.cfg_Tour))
         onActivated: root.cfg_Tour = currentValue
-
-        Component.onCompleted: {
-            var xhr = new XMLHttpRequest();
-            xhr.open("GET", Qt.resolvedUrl("tours.json"));
-            xhr.onreadystatechange = function() {
-                if (xhr.readyState === XMLHttpRequest.DONE && (xhr.status === 200 || xhr.status === 0)) {
-                    try {
-                        tourCombo.model = JSON.parse(xhr.responseText);
-                        tourCombo.currentIndex = Math.max(0, tourCombo.indexOfValue(root.cfg_Tour));
-                    } catch (e) {}
-                }
-            };
-            xhr.send();
-        }
     }
     QQC2.ComboBox {
         Kirigami.FormData.label: "Travel between places:"
