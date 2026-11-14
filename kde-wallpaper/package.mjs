@@ -17,10 +17,14 @@ execFileSync(process.execPath, [path.join(ROOT, 'build.mjs')], { stdio:'inherit'
 fs.rmSync(PKG, { recursive:true, force:true });
 fs.cpSync(path.join(SRC, 'contents'), path.join(PKG, 'contents'), { recursive:true });
 fs.copyFileSync(path.join(DIST, 'index.html'), path.join(PKG, 'contents', 'gcdatlas.html'));
+for (const dir of ['fonts', 'data']) {
+  const from = path.join(DIST, dir);
+  if (fs.existsSync(from)) fs.cpSync(from, path.join(PKG, 'contents', dir), { recursive:true });
+}
 // Extract tour definitions dynamically from source files
 const toursSrc = fs.readFileSync(path.join(ROOT, 'src', '08t-tours.js'), 'utf8') + '\n' +
                  fs.readFileSync(path.join(ROOT, 'src', '09f-features.js'), 'utf8');
-const tourRe = /id:\s*(?:\x27((?:[^\x27\\]|\\.)*)\x27|"((?:[^"\\]|\\.)*)"),\s*name:\s*(?:\x27((?:[^\x27\\]|\\.)*)\x27|"((?:[^"\\]|\\.)*)"),\s*blurb:\s*(?:\x27((?:[^\x27\\]|\\.)*)\x27|"((?:[^"\\]|\\.)*)")/g;
+const tourRe = /id:\s*(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)"),\s*name:\s*(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)"),\s*blurb:\s*(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)")/g;
 const tours = [];
 let tm;
 while ((tm = tourRe.exec(toursSrc)) !== null) {
@@ -57,6 +61,8 @@ const need = ['metadata.json', 'contents/ui/main.qml', 'contents/ui/config.qml',
 const missing = need.filter(f => !listed.includes(f));
 const problems = [];
 if (missing.length) problems.push('missing from the archive: ' + missing.join(', '));
+if (!listed.some(f => /^contents\/fonts\/.*\.woff2$/.test(f))) problems.push('missing self-hosted fonts from contents/fonts/');
+if (!listed.some(f => /^contents\/data\/cs-\w+\.js$/.test(f))) problems.push('missing cluster stars bundle from contents/data/');
 if (!meta.KPlugin.Id || meta.KPackageStructure !== 'Plasma/Wallpaper') problems.push('metadata.json is not a Plasma wallpaper');
 if (!fs.readFileSync(path.join(PKG, 'contents', 'ui', 'main.qml'), 'utf8').includes('?wallpaper=1')) problems.push('main.qml does not open the page in wallpaper mode');
 if (problems.length){ console.error('wallpaper package FAILED\n' + problems.join('\n')); process.exit(1); }
