@@ -3,13 +3,17 @@
 //   - on a phone (12 tile slots), the ground near the pole covers more tiles than there are slots: the tile under the camera must still load;
 //   - climbing away from the ground and looking elsewhere, the ground's tiles must be let go, so the tiles there load;
 //   - with the SpaceX flag off (?flags=-spacex), the ground anywhere must still be drawn, and the clock run in real time at a place.
+// The living planet (0.26.0): this week's earthquakes and the last day's fires, from canned /api answers (no live network in tests).
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { openPage, report, ROOT } from './lib.mjs';
 const DIST = path.join(ROOT, 'dist'), TYPES = { '.html':'text/html', '.js':'text/javascript', '.json':'application/json', '.webp':'image/webp', '.jpg':'image/jpeg', '.png':'image/png' };
+// (the /api answers: canned ones for the living planet's section, else none, as on the artifact page)
+let API = null;
 const server = http.createServer((q, r) => {
   let p = decodeURIComponent(q.url.split('?')[0]); if (p === '/') p = '/index.html';
+  if (p.startsWith('/api/')){ const a = API && API[p.slice(5)]; r.writeHead(a ? 200 : 404, { 'Content-Type':'application/json' }); r.end(a ? JSON.stringify(a) : '{"error":"not here"}'); return; }
   const f = path.join(DIST, p); if (!f.startsWith(DIST) || !fs.existsSync(f) || fs.statSync(f).isDirectory()){ r.writeHead(404); r.end(); return; }
   r.writeHead(200, { 'Content-Type':TYPES[path.extname(f)] || 'application/octet-stream' }); fs.createReadStream(f).pipe(r);
 }).listen(0);
@@ -19,8 +23,85 @@ const errors = [], notes = [];
 const until = async (page, f, arg, sec, what) => { const t0 = Date.now();
   while (Date.now() - t0 < sec*1000){ if (await page.evaluate(f, arg)) return (Date.now() - t0)/1000; await page.waitForTimeout(500); }
   errors.push('timed out: ' + what); return null; };
+// ---- canned answers for /api/quakes and /api/fires, as api/quakes.js and api/fires.js give them (docs/LIVE_DATA.md), at a fixed moment
+const NOW = Date.UTC(2026, 10, 8, 12, 0), TS = NOW/1000;
+function cannedQuakes(){
+  const q = [[TS - 3*3600, 38.1, 142.9, 20, 7.2, '90 km E of Ishinomaki, Japan'], [TS - 26*3600, -18.2, -178.1, 600, 6, 'Fiji region'], [TS - 50*3600, -23.4, -66.8, 180, 5.4, 'Jujuy, Argentina']];
+  for (let i = 0; i < 40; i++) q.push([TS - 600 - i*14000, 33 + (i % 7)*0.9, -118 - (i % 5)*0.8, 8, +(2.5 + (i % 9)*0.2).toFixed(1), i + ' km N of Ridgecrest, CA']);
+  q.push([TS - 7200, 'x', 10, 5, 4, 'a bad row'], [TS - 7200, 95, 10, 5, 4, 'off the globe']);   // (both refused by the page)
+  q.sort((a, b) => b[0] - a[0]);
+  return { updated:new Date(NOW).toISOString(), generated:TS - 120, from:TS - 120 - 7*86400, minMag:2.5, n:q.length, quakes:q };
+}
+function cannedFires(){
+  // (three burning regions of 20 x 20 cells: northern Australia, southern Africa, the Amazon)
+  const f = []; let k = 0;
+  for (const [la, lo] of [[-14.05, 131.05], [-12.05, 24.05], [-8.05, -55.05]]) for (let i = 0; i < 20; i++) for (let j = 0; j < 20; j++){ k++;
+    f.push([+(la + i*0.1).toFixed(2), +(lo + j*0.1).toFixed(2), 1 + k % 5, +(((k*37) % 400)/4 + 0.5).toFixed(1)]); }
+  f.push([null, 10, 1, 1]);   // (refused)
+  f.sort((a, b) => (b[3] ?? 0) - (a[3] ?? 0));
+  return { updated:new Date(NOW).toISOString(), source:'VIIRS NOAA-20', from:TS - 3600 - 86400, to:TS - 3600, cell:0.1, raw:3600, n:f.length, fires:f };
+}
 const go = (page, name) => page.evaluate(n => { const c = window.__cosmos; c.ssRate = 0; const r = c.epl.find(n)[0]; c.epl.go(r); return r && r[0]; }, name);
 try {
+  // ---- the living planet (0.26.0): the canned week of quakes and day of fires drawn on Earth, its readout, the toast for the M 7.2, the row
+  // under the readout, Earth's angle over the largest, the flight to it (a place object dressed as the quake, the clock left alone), the
+  // replay, the search, the switch; then without /api, quiet
+  { API = { quakes:cannedQuakes(), fires:cannedFires() };
+    const { browser, page, errors:pe } = await openPage({ url:URL0, now:NOW });
+    // (off by default since 0.28.3: nothing is asked for until the switch is on)
+    const off = await page.evaluate(() => { const c = window.__cosmos; c.view('earth', 0); c.simulate(3); return { on:c.qk.on(), q:c.qk.dbg().q.state }; });
+    if (off.on || off.q !== 0) errors.push('the earthquakes and fires are not off by default: ' + JSON.stringify(off));
+    await page.evaluate(() => window.__cosmos.setOpt('quakes', true, true));
+    const t = await until(page, () => { const d = window.__cosmos.qk.dbg(); return d.q.state === 2 && d.f.state === 2; }, null, 60, 'the earthquakes and fires answers');
+    const d = await page.evaluate(() => window.__cosmos.qk.dbg());
+    if (d.q.n !== 43 || d.q.n5 !== 3 || !d.q.big || d.q.big[0] !== 7.2 || d.q.newest !== TS - 600) errors.push('the earthquakes: ' + JSON.stringify(d.q));
+    const L = d.f.levels;
+    if (d.f.n !== 1200 || L.length !== 3 || !(L[2][1] < L[1][1] && L[1][1] < L[0][1]) || L.some(x => x[0] > x[1] || Math.abs(x[3] - L[0][3]) > 2)) errors.push('the fires and their levels: ' + JSON.stringify(d.f));
+    // (Earth: its readout, the row under it, the toast for the M 7.2 of 3 hours ago, its angle over the largest)
+    await page.evaluate(() => { const c = window.__cosmos; c.ssRate = 0; c.tour.on = false; c.view('earth', 0); });
+    await until(page, () => window.__cosmos.qk.dbg().row && !!window.__cosmos.qk.dbg().toast, null, 15, 'the row under the readout and the toast');
+    const e = await page.evaluate(() => { const c = window.__cosmos, o = c.BYKEY.earth; return { ro:o.readout(), go:document.getElementById('qkGo').textContent, toast:c.qk.dbg().toast,
+      angle:o.views.findIndex(v => v.track && v.ready && v.ready()), drawn:o.particles.filter(s => /^qk/.test(s.prog)).map(s => s.prog + ' ' + s.show()) }; });
+    if (!/earthquakes this week: 43 of M 2\.5 and over, 3 of M 5 and over · the largest, M 7\.2, 90 km E of Ishinomaki, Japan, 3 hours ago \(USGS\)/.test(e.ro)) errors.push("Earth's readout has no line for this week's earthquakes: " + e.ro);
+    if (!/fires and heat sources, last 24 hours: 1,200 cells of 11 km.*\(NASA FIRMS, VIIRS NOAA-20\)/.test(e.ro)) errors.push("Earth's readout has no line for the fires: " + e.ro);
+    if (e.go !== 'fly to the M 7.2 quake') errors.push('the button to the largest quake says: ' + e.go);
+    if (e.toast !== 'M 7.2 earthquake, 90 km E of Ishinomaki, Japan, 3 hours ago (USGS)') errors.push('the toast for the M 7.2: ' + e.toast);
+    if (e.angle < 0) errors.push("Earth has no angle over the week's largest quake");
+    if (!e.drawn.includes('qkDot true') || !e.drawn.includes('qkRing true') || !e.drawn.includes('qkFire true')) errors.push("the quakes and fires are not drawn at Earth's first angle: " + JSON.stringify(e.drawn));
+    // (the replay of the week: halfway through, its readout; then over by itself)
+    // (with the time setting paused: the replay runs on real time all the same)
+    const r = await page.evaluate(() => { const c = window.__cosmos; c.setOpt('time', '0', true); c.qk.startReplay(); c.simulate(20); const mid = c.BYKEY.earth.readout(); c.simulate(21); c.setOpt('time', '1', true); return { mid, on:c.qk.dbg().replay.on }; });
+    if (!/replay of the week: \w{3} \d+ Nov, \d\d:\d\d UTC · \d+ of 43 earthquakes so far/.test(r.mid) || r.on) errors.push('the replay: ' + JSON.stringify(r));
+    // (the flight to the largest: a place object dressed as the quake; the clock is not moved)
+    const g = await page.evaluate(() => { const c = window.__cosmos, d0 = c.days; c.qk.goBig(); c.land(); const o = c.OBJ[c.orbit.lock];
+      return { name:o.name, type:o.type, spot:!!o.earthSpot, ro:o.readout(), fact:o.fact, dd:c.days - d0 }; });
+    if (g.name !== 'M 7.2 earthquake' || !g.spot || !/^earthquake · 90 km E of Ishinomaki, Japan/.test(g.type)) errors.push('the flight to the largest quake landed on: ' + JSON.stringify(g));
+    if (!/M 7\.2 · 20 km deep · Sun 8 Nov, 09:00 UTC, 3 hours ago/.test(g.ro) || !/magnified/.test(g.ro) || !/USGS/.test(g.ro)) errors.push("the quake's readout: " + g.ro);
+    if (!/8 November 2026 at 09:00 UTC/.test(g.fact)) errors.push("the quake's fact: " + g.fact);
+    if (Math.abs(g.dd) > 0.01) errors.push('the flight to the quake moved the clock by ' + g.dd + ' days');
+    // (both place objects set to somewhere else in turn, the one that was the quake included: the quake's row goes)
+    const p = await page.evaluate(() => { const c = window.__cosmos; for (let i = 0; i < 2; i++){ c.epl.go(['Test Basin', 'r', 10, 10, 500, '', 'basin']); c.land(); }
+      const o = c.OBJ[c.orbit.lock]; return { name:o.name, row:c.qk.dbg().row, quake:c.qk.isQuakeSpot(o) }; });
+    if (p.name !== 'Test Basin' || p.row || p.quake) errors.push('a place object reused after the quake still shows it: ' + JSON.stringify(p));
+    // (the search lists the week's largest; the place's other words narrow it down)
+    const f = await page.evaluate(() => { const c = window.__cosmos; return [c.epl.find('earthquake').map(r => r[0]), c.epl.find('quakes argentina').map(r => r[0])]; });
+    if (!f[0].length || !/^M 7\.2 earthquake, 90 km E of Ishinomaki/.test(f[0][0]) || f[1][0] !== 'M 5.4 earthquake, Jujuy, Argentina') errors.push('the search for earthquakes: ' + JSON.stringify(f));
+    // (the switch: off, nothing drawn and nothing said)
+    const o = await page.evaluate(() => { const c = window.__cosmos; c.setOpt('quakes', false, true); c.view('earth', 0); const e = c.BYKEY.earth;
+      const res = { on:c.qk.on(), drawn:e.particles.filter(s => /^qk/.test(s.prog)).some(s => s.show()), ro:/earthquakes|fires and heat/.test(e.readout()) }; c.setOpt('quakes', true, true); return res; });
+    if (o.on || o.drawn || o.ro) errors.push('with the switch off: ' + JSON.stringify(o));
+    notes.push('the living planet: 43 quakes and 1,200 fire cells in after ' + t + ' s (' + L.map(x => x[1]).join(' / ') + " points by level), the M 7.2's toast, flight and readout, the replay and the search");
+    errors.push(...pe); await browser.close(); }
+  // ---- without /api (as on the artifact page, or when an upstream is down): quiet; a shared link to a quake still opens as an earthquake
+  { API = null;
+    const { browser, page, errors:pe } = await openPage({ url:URL0 + '#o=earth-place-0&g=' + encodeURIComponent('38.1,142.9,r,1300,,earthquake,M 7.2 earthquake'), now:NOW });
+    await page.evaluate(() => window.__cosmos.setOpt('quakes', true, true));
+    await until(page, () => { const d = window.__cosmos.qk.dbg(); return d.q.state === 3 && d.f.state === 3; }, null, 60, 'the earthquakes and fires answers refused');
+    const q = await page.evaluate(() => { const c = window.__cosmos, s = c.BYKEY['earth-place-0'], link = { name:s.name, type:s.type, fact:s.fact, ro:s.readout() };
+      c.view('earth', 0); return { ro:c.BYKEY.earth.readout(), row:c.qk.dbg().row, link }; });
+    if (/earthquakes|fires and heat/.test(q.ro) || q.row) errors.push('without /api something is still said: ' + JSON.stringify(q));
+    if (q.link.name !== 'M 7.2 earthquake' || q.link.type !== 'an earthquake' || /Natural Earth/.test(q.link.fact) || !/USGS/.test(q.link.ro)) errors.push('a link to a quake without its list: ' + JSON.stringify(q.link));
+    errors.push(...pe); await browser.close(); }
   // ---- a phone, near the pole, then away
   { const { browser, page, errors:pe } = await openPage({ phone:true, url:URL0 });
     await page.evaluate(() => window.__cosmos.epl.load());
@@ -104,6 +185,38 @@ try {
     const s = await page.evaluate(() => { const c = window.__cosmos; return { rate:c.ssRate, d:c.egr.dbg() }; });
     if (Math.abs(s.rate - 1/86400) > 1e-9) errors.push(`with SpaceX off the clock at ${where} runs at ${s.rate} days a second, not in real time`);
     notes.push(`SpaceX off: the ground drawn at ${where} after ${t} s, ${s.d.alt} km up, the Sun ${s.d.sun} degrees up`);
+    errors.push(...pe); await browser.close(); }
+  // ---- scrolling out of a place (0.27.12, owner: "it gets very buggy and things seem to spiral out of control"): the wheel with the cursor
+  // off to a side never moves the place, the camera goes over to the Earth with no jump in where it looks, a gentle roll and never under
+  // the ground, and scrolling back in on the way comes back to the place. From a file, the clock and the page's loop held still.
+  { const { browser, page, errors:pe } = await openPage({ freeze:true, now:NOW });
+    const z = await page.evaluate(() => { const c = window.__cosmos, earth = c.OBJ.find(o => o.key === 'earth'), paris = c.epl.PICKS.cities.find(r => r[0] === 'Paris'); c.ssRate = 0;
+      const ang = (a, b) => Math.acos(Math.max(-1, Math.min(1, a[0]*b[0] + a[1]*b[1] + a[2]*b[2])))*180/Math.PI, key = () => c.OBJ[c.orbit.lock].key;
+      c.epl.go(paris); c.land(1);
+      const o = c.OBJ[c.orbit.lock], la = o.place.la, lo = o.place.lo, d0 = c.orbit.dist, R = Math.hypot(...o.offset), cv = document.querySelector('#view');
+      // (the wheel, 400 px right of and 200 px above the middle: 24 notches out)
+      for (let i = 0; i < 24; i++){ cv.dispatchEvent(new WheelEvent('wheel', { deltaY:300, clientX:innerWidth/2 + 400, clientY:innerHeight/2 - 200, bubbles:true, cancelable:true })); for (let k = 0; k < 6; k++) c.tick(1/60); }
+      for (let i = 0; i < 120; i++) c.tick(1/60);
+      const out = { name:o.name, moved:Math.abs(o.place.la - la) + Math.abs(o.place.lo - lo), wheel:key() };
+      // (again, in one hard pull, every tick measured)
+      c.epl.go(paris); c.land(1); c.zoomTo(d0*1e5);
+      let pf = null, pu = null; out.turn = out.roll = 0; out.low = 1e9;
+      for (let i = 0; i < 60*4; i++){ c.tick(1/60); const f = c.cam.fwd.slice(), u = c.cam.up.slice();
+        if (pf){ out.turn = Math.max(out.turn, ang(pf, f)); out.roll = Math.max(out.roll, ang(pu, u)); } pf = f; pu = u;
+        out.low = Math.min(out.low, Math.hypot(...earth.rel)/R); }
+      out.pull = key(); out.pitch = c.orbit.pitch;
+      // (out to between the two distances, then back in before the camera has gone over)
+      c.epl.go(paris); c.land(1); const p = c.OBJ[c.orbit.lock]; c.zoomTo(R*2.5); for (let i = 0; i < 40; i++) c.tick(1/60);
+      out.mid = p.riseW; c.zoomTo(d0); out.backLow = 1e9; out.backRoll = 0; out.backStep = 0; pu = c.cam.up.slice(); let po = c.orbit.off.slice();
+      for (let i = 0; i < 60*4; i++){ c.tick(1/60); out.backLow = Math.min(out.backLow, Math.hypot(...earth.rel)/R);
+        const u = c.cam.up.slice(); out.backRoll = Math.max(out.backRoll, ang(pu, u)); pu = u;
+        out.backStep = Math.max(out.backStep, Math.hypot(...c.orbit.off.map((v, j) => v - po[j]))/R); po = c.orbit.off.slice(); }
+      out.back = key(); out.backW = p.riseW; out.backOff = Math.hypot(...c.orbit.off)/R; out.place = p.key; return out; });
+    if (z.name !== 'Paris' || z.moved > 1e-9) errors.push(`scrolling out with the cursor off to a side moved the place: ${z.name}, ${z.moved} degrees`);
+    if (z.wheel !== 'earth' || z.pull !== 'earth') errors.push(`scrolled far out of Paris the camera is locked on ${z.wheel} and ${z.pull}, not Earth`);
+    if (!(z.turn < 0.5) || !(z.roll < 1.5) || !(z.low > 1)) errors.push(`going over to the Earth the view turned ${z.turn.toFixed(2)} and rolled ${z.roll.toFixed(2)} degrees in a tick, lowest ${z.low.toFixed(3)} Earth radii`);
+    if (!(z.mid > 0.1 && z.mid < 0.9) || z.back !== z.place || z.backW !== 0 || !(z.backOff < 1e-3) || !(z.backLow > 1) || !(z.backRoll < 0.9) || !(z.backStep < 0.03)) errors.push(`scrolling back in on the way out did not come back to the place: ${JSON.stringify(z)}`);
+    notes.push(`scrolled out of Paris: the place stays, the camera goes over to Earth rolling at most ${(z.roll*60).toFixed(0)} degrees a second`);
     errors.push(...pe); await browser.close(); }
 } catch (e) { errors.push(String(e && e.stack || e)); }
 server.close();

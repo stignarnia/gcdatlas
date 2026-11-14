@@ -34,15 +34,20 @@ Everything the two lists do not cover stays on our own curated backlog below: bl
 Status: `planned`, `in progress`, `done` (then it appears in CATALOG.md and can be removed from here).
 
 ### From the checklists · planned (one pull request each, about 20 objects)
-After 0.21.0, 28 Messier objects are left. In the order to take them:
+Since 0.25.0 all 110 Messier objects are in. The Caldwell catalogue is next, in this order:
 
 | Pack | Objects |
 | --- | --- |
-| Messier 4: galaxies and the rest | the Virgo Cluster's M49, M58, M59, M60, M61, M85, M88, M89, M90, M91, M98, M99, M100; M94, M95, M96, M105, M102, M108, M109; the open clusters M18, M21, M26, M48, M50, M93 (a line each now: add them to `LIST` in `tools/cluster-stars.mjs`, run it, and call `gaiaOpenCluster`); the double star M40 and the asterism M73 |
-| Caldwell 1: southern showpieces | 47 Tucanae (C106), the Jewel Box (C94), the Coalsack (C99), the Southern Pleiades (C102), the Wishing Well (C91), NGC 6397 (C86), NGC 6752 (C93), the Running Chicken (C100), NGC 3201 (C79), NGC 1851 (C73) |
+| Caldwell 1: southern showpieces | in progress: 47 Tucanae (C106), NGC 6397 (C86), NGC 6752 (C93), NGC 3201 (C79), NGC 1851 (C73), the Jewel Box (C94), the Southern Pleiades (C102) and the Wishing Well (C91) done in 0.28.0; the Coalsack (C99) and the Running Chicken (C100) next, each with a look of its own (stills for the owner to pick) |
 | Caldwell 2: northern nebulae | the Double Cluster (C14), the North America Nebula (C20), the Crescent (C27), the Rosette (C49, C50), the Cocoon (C19), the Iris (C4), the Cave (C9), the Flaming Star (C31), Hubble's Variable Nebula (C46) |
 | Caldwell 3: planetary nebulae | the Saturn Nebula (C55), the Eskimo (C39), the Ghost of Jupiter (C59), the Blue Snowball (C22), the Bug or Butterfly (C69), the Skull (C56), the Bow-Tie (C2), the Blinking Planetary (C15) |
 | Caldwell 4: galaxies | the Needle (C38), NGC 891 (C23), the Whale (C32), the Fireworks (C12), the Hidden Galaxy (C5), NGC 1097 (C67), NGC 4945 (C83), NGC 300 (C70), NGC 55 (C72), the Spindle (C53) |
+
+### Done in 0.27.0 (`src/objects/m1-moon-map.js` to `m4-moon-places.js`, `tools/moon-detail.mjs`)
+The real Moon: NASA's LRO map of the whole Moon on its globe, and nine places on it in 3D from LRO's photos and terrain models: Tranquility Base and the other five Apollo landing sites (each lander drawn as a labelled model), Hadley Rille, Tycho and Copernicus; the tour Footsteps on the Moon.
+
+### Done in 0.25.0 (`src/objects/p9c-messier4.js`)
+The last 28 Messier objects: the Virgo Cluster's M49, M58, M59, M60, M61, M85, M88, M89, M90, M91, M98, M99 and M100; M94, M95, M96, M105, M102 (NGC 5866), M108 and M109; the open clusters M18, M21, M26, M48, M50 and M93 from their Gaia members (`tools/cluster-stars.mjs m18 m21 ...` fetches only the clusters named); M40 and M73, their stars at their Gaia distances along our line of sight (`lineOfSight`). NGC 4647 (beside M60) and NGC 3384 (beside M105) are drawn, not listed. The Virgo Cluster itself is a place: its 16 Messier galaxies and 1,012 more members as points (`tools/virgo-members.mjs`). A Messier badge for seeing all 110.
 
 ### Done in 0.23.0 (surfaces in `src/o00-sun.js`, the moons in `src/o10-planet.js`, the pairs in `src/o12-stars.js`)
 Tethys, Dione and Rhea listed, each with a surface of its own (their features at the IAU gazetteer's positions) and its real place along its orbit; Capella and Spica listed, drawn as the pairs they are on their real orbits (with Capella Ab and Spica B, drawn, not listed).
@@ -63,8 +68,8 @@ Vesta, Bennu, Mimas and its crater Herschel, 51 Pegasi b, K2-18 b, HD 189733 b, 
 | Pack | Objects |
 | --- | --- |
 | human reach | Parker Solar Probe, Tiangong (its elements already come from `/api/sats`), our radio bubble (about 212 light-years across, worked out from the date; its star count computed once), the Arecibo message on its way to M13 (illustrative), a "human reach" tour. (The Tesla Roadster with Starman was done in 0.9.5, with SpaceX's rockets.) |
-| surfaces | a terrain shader for patches you can fly low over; Olympus Mons, Tranquility Base and the other landing sites, Perseverance in Jezero, Valles Marineris, Io's and Enceladus's plumes (both readouts already mention them), Didymos and Dimorphos |
-| the biggest things | Laniakea (real Cosmicflows-4 flows), the Virgo Cluster (its Messier galaxies come in Messier 4), the Hercules-Corona Borealis Great Wall (labelled debated), Porphyrion, GRB 221009A, the heliosphere |
+| surfaces (the Moon done in 0.27.0) | Mars next: Olympus Mons, Valles Marineris, Perseverance in Jezero (the Moon's tool and ground shader, `tools/moon-detail.mjs` and FS_MOON_ENV, are the model); then Io's and Enceladus's plumes (both readouts already mention them), Didymos and Dimorphos |
+| the biggest things | Laniakea (real Cosmicflows-4 flows), the Hercules-Corona Borealis Great Wall (labelled debated), Porphyrion, GRB 221009A, the heliosphere (the Virgo Cluster came in 0.25.0) |
 
 ### Comets and meteors · first pack done in 0.8.1 (`src/objects/p6-comets.js`), more planned
 | Object | Notes |
@@ -78,7 +83,6 @@ Vesta, Bennu, Mimas and its crater Herschel, 51 Pegasi b, K2-18 b, HD 189733 b, 
 ### Human spaceflight · planned (see "human reach" and "surfaces" above)
 | Object | Notes |
 | --- | --- |
-| Apollo landing sites | markers on the Moon (11, 12, 14, 15, 16, 17) |
 | Perseverance | Jezero crater, Mars (18.44°N, 77.45°E) |
 | Curiosity | Gale crater, Mars (4.59°S, 137.44°E) |
 | Parker Solar Probe | its closest passes, 6.1 million km from the Sun's surface; the fastest object ever built |
@@ -96,7 +100,6 @@ Vesta, Bennu, Mimas and its crater Herschel, 51 Pegasi b, K2-18 b, HD 189733 b, 
 | Olympus Mons | low flyover view on Mars |
 | Valles Marineris | canyon system |
 | Io's plumes | volcanic plumes rising 300 km |
-| Lunar craters | Tycho and Copernicus close-ups |
 
 ### Earth, closer
 Planned and tracked in `docs/EARTH_PLAN.md` (the real Earth, its cities and famous places, live data).

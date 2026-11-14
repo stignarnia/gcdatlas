@@ -219,44 +219,75 @@ const nurseryProg = kind => program(VS_RECT, COMMON + '#define KIND ' + kind + '
 // Only how far along our line of sight each one sits is made up (a bell curve as wide as the cluster on the sky): one star's parallax is not
 // precise enough at these distances. Colour: BP-RP less the reddening (E(BP-RP) about 0.42 AV) turned into a temperature (Mucciarelli &
 // Bellazzini 2020, for dwarfs); the size of a point goes by the star's absolute G magnitude. Stars only, no volume.
+// The stars come later (0.27.14, from the review of 2026-11-09: the star lists were 67 KB of the page's 871 KB compressed, and decoding them
+// took 14 ms of every start, 60 ms on a phone's processor): build.mjs moves them to their own file, data/cs-<hash>.js (CLUSTER_STARS_SRC),
+// and leaves each cluster its size (r98, r90: the radii in degrees holding 98% and 90% of its members), so the cluster is placed and sized
+// at start-up exactly as before. The file is asked for the first time a cluster is drawn (a script, which also loads from a page opened as
+// a file), and each cluster's stars are made the first time it is drawn after that, fading in over 1.2 s if they arrived while it was in
+// view. The artifact page (served alone) keeps the lists in the page: CLUSTER_STARS_SRC is null there and every star is ready at once.
+let CS_DATA = null, csAt = -1e9;
+function csLoad(){
+  if (CS_DATA || !CLUSTER_STARS_SRC || performance.now() - csAt < 30000) return;   // (asked once; again after 30 s if it failed)
+  csAt = performance.now();
+  window.__clusterStars = d => { CS_DATA = d; };
+  const el = document.createElement('script'); el.src = CLUSTER_STARS_SRC; el.async = true; el.onerror = () => el.remove(); document.head.appendChild(el);
+}
 function gaiaCluster(key){
-  const c = CLUSTER_STARS[key], D = c.pc*3.2616, pos = radec(c.ra/15, c.dec, D), R0 = facingEarth(pos, [0, 0, 1], 0);
-  const bin = atob(c.s), dv = new DataView(Uint8Array.from(bin, ch => ch.charCodeAt(0)).buffer), n = c.k, cd = Math.cos(c.dec*DEG), lyDeg = DEG*D;
+  const c = CLUSTER_STARS[key], D = c.pc*3.2616, pos = radec(c.ra/15, c.dec, D), R0 = facingEarth(pos, [0, 0, 1], 0), lyDeg = DEG*D;
+  const RAD = c.r98*lyDeg*1.05, R90 = c.r90*lyDeg;
+  // (st: its stars once made; at: when, for the fade; -1e9 when they were there the first time it was drawn)
+  const st = { ps:null, spikes:null, at:0, tried:false };
+  const ready = () => { if (st.ps) return true;
+    const s = c.s || (CS_DATA && CS_DATA[key]); if (!s){ st.tried = true; csLoad(); return false; }
+    Object.assign(st, gaiaStars(key, c, s, D, pos, R0, RAD)); st.at = st.tried ? GT : -1e9; return true; };
+  const fade = () => smooth(0, 1.2, GT - st.at);
+  return { pos, D, RAD, R0, R90, cl:{ get ps(){ return st.ps; }, get spikes(){ return st.spikes; }, ready, fade } };
+}
+function gaiaStars(key, c, s64, D, pos, R0, RAD){
+  const bin = atob(s64), dv = new DataView(Uint8Array.from(bin, ch => ch.charCodeAt(0)).buffer), n = c.k, cd = Math.cos(c.dec*DEG), lyDeg = DEG*D;
   const S = [];
   for (let i=0;i<n;i++) S.push({ xi:dv.getInt16(i*6, true)/6000, eta:dv.getInt16(i*6 + 2, true)/6000, g:dv.getUint8(i*6 + 4)/10, bc:dv.getInt8(i*6 + 5) });
-  const rr = S.map(s => Math.hypot(s.xi, s.eta)*lyDeg).sort((a, b) => a - b), RAD = rr[Math.floor(0.98*(n - 1))]*1.05;
   const sig = Math.sqrt(S.reduce((a, s) => a + (s.xi*s.xi + s.eta*s.eta)*lyDeg*lyDeg, 0)/(2*n));
   // (the depths come from a little generator of its own, seeded by the key, so the shared rnd() is left alone)
   let z = [...key].reduce((h, ch) => Math.imul(h ^ ch.charCodeAt(0), 16777619), 2166136261) >>> 0;
   const u01 = () => { z = (z + 0x6D2B79F5) >>> 0; let t = z; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0)/4294967296; };
   const gauss = () => Math.sqrt(-2*Math.log(Math.max(u01(), 1e-9)))*Math.cos(6.2832*u01());
   const mu = 5*Math.log10(c.pc/10) + 0.79*c.av, ebr = 0.42*c.av, ps = makePS(n), all = [];
+  // (a point's size on the drawing: by the star's absolute G, then lifted so the cluster's middle star reads, 0.27.7. Gaia's 600 members of a
+  // near cluster reach far down among its dwarfs, the Beehive's most of all, and at the plain scale the whole cluster was a few faint dots)
+  const w0 = s => clamp(0.6 + (6 - (s.g - mu))*0.2, 0.5, 2.4), med = S.map(w0).sort((a, b) => a - b)[n >> 1], lift = clamp(1.15/med, 1, 1.9);
   S.forEach((s, i) => {
     const w = radec((c.ra + s.xi/cd)/15, c.dec + s.eta, D + gauss()*sig), p = V.mul(M3.applyT(R0, V.sub(w, pos)), 1/RAD);
     const C = clamp(s.bc === -128 ? 0.8 : s.bc/40 - ebr, -0.45, 3), T = clamp(5040/(0.4929 + 0.5092*C - 0.0353*C*C), 3000, 25000);
-    const col = blackbodyJS(T), wt = clamp(0.6 + (6 - (s.g - mu))*0.2, 0.5, 2.4);
+    const col = blackbodyJS(T), wt = Math.min(w0(s)*lift, 2.6);
     ps.a.set([p[0], p[1], p[2], wt], i*4); ps.c.set([col[0], col[1], col[2], 0], i*4); all.push({ p, w:wt, c:col });
   });
   ps.upload('ac');
   const bright = all.filter(s => s.w > 1.8).sort((a, b) => b.w - a.w).slice(0, 8).map(s => ({ p:s.p, w:Math.min(s.w, 2.4), c:s.c }));
-  return { pos, D, RAD, R0, R90:rr[Math.floor(0.9*(n - 1))], cl:{ ps, spikes:makeSpikes(bright) } };
+  return { ps, spikes:makeSpikes(bright) };
 }
 // (the angles: from Earth, from the side, and from inside the cluster's middle; RAD reaches out to its farthest members, so the angles sit
 // closer in than a nebula's. In mode 1 drawParticles already scales a point's strength by the square of the object's radius, and its light
 // falls off with the square of its distance, so every cluster looks as bright at its own framing, whatever its size. A second (rad/16)^2 here
 // made M39 about 13 times brighter than M36 and saturated the big clusters: from Codex's review of #50)
+// 0.27.7 (from the review of 2026-11-09: 17 open clusters opened on a few crosses on black, the Beehive on three): the first two angles
+// stand outside the cluster, 1.4 and 1.2 radii from its middle, so it reads as a swarm that thickens toward its centre (they stood inside
+// it, at 0.7, with its stars strewn across the whole screen), and the third is from inside, at 0.4. The stars are points of 2.5 px whose light
+// falls off with their distance, not its square (particle mode 4): by the square, a setting bright enough from outside burned out from
+// inside. The crosses on the brightest stars keep the square law (their shader has no other) and are set for the outside angles.
 function addOpenCluster(def, cl, extra = []){
-  const k2 = 1;
   return addObj(Object.assign({ tags:['clusters'], group:'nebulae', R0:facingEarth(def.pos, [0, 0, 1], 0), minZoom:0.03, pxMin:5, farColor:[0.8, 0.86, 1], farLum:0.6,
-    views:[{ dirFn:() => V.norm(V.mul(def.pos, -1)), k:0.7, hold:9, drift:0.02 }, { d:[0.6, 0.4, 0.7], k:0.65, hold:8, drift:0.03 }, { d:[0.2, 0.15, 1], k:0.18, hold:8, drift:0.03 }],
-    particles:[{ ps:cl.ps, prog:'ptBasic', mode:1, sb:(def.sb ?? 0.7)*k2, size:1.7 }, ...extra, { ps:cl.spikes, prog:'spike', lines:true, mode:1, sb:2.2*k2, size:1, len:0.04, q0:() => [1, 0, 0, 0] }] }, def));
+    views:[{ dirFn:() => V.norm(V.mul(def.pos, -1)), k:1.4, hold:9, drift:0.02 }, { d:[0.6, 0.4, 0.7], k:1.2, hold:8, drift:0.03 }, { d:[0.2, 0.15, 1], k:0.4, hold:8, drift:0.03 }],
+    // (cl.ready: a Gaia cluster's stars may still be on their way; drawParticles asks show() before it reads ps)
+    particles:[{ get ps(){ return cl.ps; }, show:cl.ready, prog:'ptBasic', mode:4, get sb(){ return (def.sb ?? 0.7)*5.1*(cl.fade ? cl.fade() : 1); }, size:2.5 }, ...extra,
+      { get ps(){ return cl.spikes; }, show:cl.ready, prog:'spike', lines:true, mode:1, get sb(){ return 6*(cl.fade ? cl.fade() : 1); }, size:1, len:0.04, q0:() => [1, 0, 0, 0] }] }, def));
 }
 // an open cluster from its Gaia members, by its key in CLUSTER_STARS (the atlas's key too)
 function gaiaOpenCluster(key, def){
   const G = gaiaCluster(key);
   return addOpenCluster(Object.assign({ key, pos:G.pos, rad:G.RAD, R0:G.R0, sizeR:G.R90, sortKey:Math.round(G.D) }, def), G.cl);
 }
-gaiaOpenCluster('beehive', { name:'Beehive Cluster', label:'Beehive', type:'open star cluster · M44 · Praesepe · in Cancer', labelRange:4e4, sb:0.9,
+gaiaOpenCluster('beehive', { name:'Beehive Cluster', label:'Beehive', type:'open star cluster · M44 · Praesepe · in Cancer', labelRange:4e4,
   fact:'Over a thousand stars born together some 600 to 700 million years ago. Known since ancient times as a little cloud, it was seen as stars by Galileo in 1610. Planets have been found round several of its stars.',
   aka:'m44 messier 44 ngc 2632 praesepe beehive manger cancer',
   readout:() => '600 light-years (Gaia) · its stars spread over about 40 light-years\nabout 650 million years old · 600 of its stars as Gaia measured them' });
@@ -370,10 +401,12 @@ addGalaxy({ key:'m84', name:'M84', label:'M84', type:'elliptical galaxy · Marka
   rad:66000, sizeR:63000, g:{ ell:0.12, Rd:0.42, sf:0.05, gain:1.5 }, stars:5000, farLum:0.8, views:ellViews(30),
   aka:'m84 messier 84 ngc 4374 3c 272.1 markarian\'s chain markarian chain virgo cluster',
   readout:() => '60 million light-years · about 125,000 light-years across\nits black hole weighs about 850 million Suns' });
-addGalaxy({ key:'m86', name:'M86', label:'M86', type:'lenticular galaxy · Markarian\'s Chain · Virgo Cluster', ...galAt(186.5492, 12.946, 54.9e6, 50, 129),
+// (M86's distance, 58.3 million light-years, is Blakeslee et al. 2009's: until 0.25.0 it was 54.9, from a typo in Mei et al. 2007 that
+// Blakeslee et al. corrected, found while researching the last Messier pack; its size, about 150,000 light-years, is RC3's D25 at it)
+addGalaxy({ key:'m86', name:'M86', label:'M86', type:'lenticular galaxy · Markarian\'s Chain · Virgo Cluster', ...galAt(186.5492, 12.946, 58.3e6, 50, 129),
   fact:'One of the few galaxies coming toward us. It falls through the Virgo Cluster toward us at about 1,300 km/s, faster than the cluster itself moves away from us, so its light is shifted to the blue. Its hot gas streams off behind it in a long plume.',
   rad:80000, sizeR:75000, g:{ ell:0.32, Rd:0.42, sf:0.04, gain:1.5 }, stars:5000, farLum:0.85, views:ellViews(50),
   aka:'m86 messier 86 ngc 4406 markarian\'s chain markarian chain virgo cluster blueshift',
-  readout:() => '55 million light-years · about 150,000 light-years across\ncoming toward us at about 240 km/s' });
+  readout:() => '58.3 million light-years · about 150,000 light-years across\ncoming toward us at about 240 km/s' });
 
 seed = P8_SEED;

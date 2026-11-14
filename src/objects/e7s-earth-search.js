@@ -93,8 +93,15 @@ const EPL = (() => {
     o.offset = V.mul(M3.apply(earth.rot, V.mul(u, R + o.hNow/1000)), KM); o.pos = V.add(earth.pos, o.offset);
     o.R0 = M3.mul(earth.rot, F.M); o.up = u; o.F = F;
     // locked on it, the camera turns with the Earth, and stays above the ground under it (and 150 m clear)
-    if (orbit.lock === o.index && !flight && !LCAM.on && !SKYV.on){ orbit.frame = o.R0; clearGround(o); }
+    if (orbit.lock === o.index && !flight && !LCAM.on && !SKYV.on && !rise(o)){ orbit.frame = o.R0; clearGround(o); }
   }
+  // ---------------------------------------------------------------- scrolling out of a place (0.27.12, owner: "when I am locked on a place on
+  // Earth and I zoom out, it gets very buggy and things seem to spiral out of control"): between 8,000 and 32,000 km from it (6 and 24
+  // radii of a big region) the camera goes over to the Earth (riseTo, 08-camera.js)
+  const riseA = o => Math.max(8000, 6*o.rad/KM);
+  const rise = o => riseTo(o, earth, R, riseA(o));
+  // (on the way out to the Earth, or back: the place stays where it is and a drag turns the view)
+  const rising = o => o.riseW > 0 || riseK(riseA(o)) > 0;
   function clearGround(o){
     const P = o.place, dKm = orbit.dist/KM;
     // (the camera circles the point it looks at, which a framing may set km away from the place's middle: a famous place's peaks and coasts)
@@ -141,7 +148,7 @@ const EPL = (() => {
   // so the ground follows the mouse. Once it has gone more than a few km from the place it was set to, it is "over" the nearest famous place
   function panKm(o, dN, dE){
     if (o.own) o = handoff(o);
-    const P = o.place; P.la = clamp(P.la + dN/R/DEG, -85, 85); P.lo = ((P.lo + dE/(R*Math.cos(P.la*DEG))/DEG + 540) % 360) - 180;
+    const P = o.place; P.la = clamp(P.la + dN/R/DEG, -85, 85); P.lo = (((P.lo + dE/(R*Math.cos(P.la*DEG))/DEG + 180) % 360 + 360) % 360) - 180;
     const away = V.len(V.sub(V.mul(unit(P.la, P.lo), R), V.mul(unit(P.la0, P.lo0), R)));
     if (P.row && away > Math.max(8, 4*o.rad/KM)){
       P.row = null; o.city = null; o.readoutExtra = null; o.iconic = null; o.dressRO = null; o.tourViews = null; o.dayAt = null; o.hNow = null;
@@ -158,6 +165,7 @@ const EPL = (() => {
   }
   // a move of the mouse by (dx, dy) CSS pixels, as ground: the place moves the other way, so the ground under the mouse follows it
   function panPx(o, dx, dy){
+    if (rising(o)) return;   // (on the way out to the Earth the place stays where it is)
     if (o.own) o = handoff(o);
     const s = 2*tanY/viewHcss*orbit.dist/KM, up = M3.apply(earth.rot, o.up);
     const flat = v => V.sub(v, V.mul(up, V.dot(v, up))), rt = V.norm(flat(cam.right)), f0 = flat(cam.fwd), fw = V.len(f0) > 0.05 ? V.norm(f0) : V.norm(flat(cam.up));
@@ -227,6 +235,6 @@ const EPL = (() => {
   // (while a place on Earth is visited, or flown to, the clock runs in real time, as near a launch pad: at the atlas's usual pace the
   // afternoon it was flown to turned to night on the way)
   const hold = () => { const o = OBJ[orbit.lock]; return !!(o && o.earthSpot && !flight) || !!(flight && (flight.obj.earthSpot || (pend && flight.obj === earth))); };
-  return { can, find, go, about, load, spots, hashOf, fromHash, onLoad, hold, PICKS, ALL_PICKS, spotHooks, ownHooks, findHooks, ownOf, panPx, panKm, nearest, setSpot, placeSpot, flyIn, llTxt, metres,
+  return { can, find, go, about, load, spots, hashOf, fromHash, onLoad, hold, PICKS, ALL_PICKS, spotHooks, ownHooks, findHooks, ownOf, panPx, panKm, rising, nearest, setSpot, placeSpot, flyIn, llTxt, metres,
     VIEWS, get state(){ return state; } };
 })();

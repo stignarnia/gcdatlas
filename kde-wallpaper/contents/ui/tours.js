@@ -33,6 +33,10 @@ var tours = [
         "value": "earth"
     },
     {
+        "text": "Footsteps on the Moon (the six Apollo landings in order, then Tycho and Copernicus)",
+        "value": "moon"
+    },
+    {
         "text": "Galaxies (islands of stars, near and far)",
         "value": "galaxies"
     },

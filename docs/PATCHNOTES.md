@@ -5,6 +5,119 @@
      numbers with units. The newest version comes first and opens by itself; its number must match package.json (tests/smoke.mjs checks it).
      Every detail stays in docs/CHANGELOG.md, which the panel links to. -->
 
+## 0.28.5 · 12 Nov 2026 · Calmer earthquakes
+- Earthquakes and fires on Earth are off unless you turn them on (settings, show).
+- Turned on, each quake is a glowing spot instead of a ring, only from magnitude 3.5, bigger for bigger quakes.
+
+## 0.28.4 · 12 Nov 2026 · Calmer
+- A place's numbers are easier to read: one line each, labels in grey. Long lists, like Earth's live data, show two lines and a "more" button, which remembers your choice.
+- A rocket launch you are not watching is named for 10 seconds, then the notice fades. Its x hides launch notices for the rest of your visit.
+- Today's discovery fades on its own after 15 seconds and does not come back that day.
+
+## 0.28.2 · 11 Nov 2026 · Easier to read
+- On a big screen (1440 px wide or more) all the text is 10% bigger.
+- "travel", "ruler" and the search key are no longer faint.
+- On a phone, when the buttons fade, the name and the angle now sit at the bottom of the screen instead of hanging in the sky.
+
+## 0.28.1 · 11 Nov 2026 · Corrections
+- Five corrections to the new southern clusters' texts, after checking them against their sources. NGC 6752 is the fourth-brightest globular cluster, not the third.
+
+## 0.28.0 · 11 Nov 2026 · Southern star clusters
+- Eight new places in the southern sky, from Patrick Moore's Caldwell list: 47 Tucanae, the second-brightest globular cluster, and four more globulars.
+- Three open clusters drawn from their real stars as the Gaia spacecraft measured them: the Jewel Box, the Southern Pleiades and the Wishing Well.
+
+## 0.27.14 · 11 Nov 2026 · A quicker start
+- The page is about 70 KB smaller and starts a little sooner: the stars of the open clusters now load just after it. They look exactly as before.
+
+## 0.27.13 · 11 Nov 2026 · Scrolling out of a place on the Moon
+- Scroll out from a place on the Moon, such as Apollo 11 or Tycho, and the camera now moves over to the whole Moon, as it does from a place on Earth.
+- The turn that brings the Moon's north to the top is gentler.
+
+## 0.27.12 · 11 Nov 2026 · Scrolling out of a place on Earth
+- Scrolling out from a place on Earth no longer sends it sliding across the globe. The place stays where it is.
+- Keep scrolling and the camera moves over to the whole Earth, smoothly, from about 8,000 km up.
+
+## 0.27.11 · 10 Nov 2026 · A smaller download
+- The page is about 13% smaller to download: 130 KB less. Nothing you see changes.
+
+## 0.27.10 · 10 Nov 2026 · Globular clusters round the giant galaxies
+- The elliptical galaxies of the Virgo Cluster, M87, M105 and M110 are now surrounded by their swarms of globular clusters, from a handful to 13,000, each at its published number. They no longer all look alike.
+- M60 and M105 open with their neighbours beside them.
+- The Fornax and Sagittarius dwarfs show their few globular clusters too.
+
+## 0.27.9 · 10 Nov 2026 · Rings that look like rings
+- The Helix, the Southern Ring and the Ring Nebula now open as a glowing ring in dark sky, with a dark middle, like the famous photos. Their glow used to fill most of the screen.
+- Up close they are easier on the eye too.
+
+## 0.27.8 · 10 Nov 2026 · The Orion Nebula, sharper
+- The Orion Nebula has its shape back: a bright core round the Trapezium, two wings of glowing gas, the dark bay to the north, and dust lanes across the middle.
+- Up close it reads as clouds instead of a screen full of white.
+
+## 0.27.7 · 10 Nov 2026 · Star clusters that look like clusters
+- The 26 open clusters, the Beehive and the Wild Duck among them, now open as a swarm of stars that thickens toward the middle. Before, most showed a few bright crosses on black.
+- Their first two angles stand outside the cluster, the third inside it.
+- Every star is still one Gaia measured, at its real place on the sky.
+
+## 0.27.6 · 10 Nov 2026 · The Moon without the pop
+- Flying to the Moon, NASA's map is now fetched as the flight sets out, so you arrive on the real Moon. Before, it switched about a second after you got there.
+- On a slow connection the map can still come in late. It then dissolves in over 3 seconds instead of 0.4.
+
+## 0.27.5 · 10 Nov 2026 · A steadier clock
+- A Crew Dragon replay you are not watching no longer moves the date on a day when it docks. Before, the Moon hopped 14 degrees in one frame.
+- Watch a Dragon flight and nothing changes: it still skips about a day to the docking, behind a fade.
+
+## 0.27.4 · 10 Nov 2026 · A steadier test
+- Behind the scenes: the check that flies the Halo on a fixed route now gives the same answer on every run. A launch replay could move the atlas clock on a day in the middle of it.
+- Nothing changes on screen.
+
+## 0.27.3 · 10 Nov 2026 · Easier to read
+- Names stay readable over bright scenes: every label has a dark plate behind it, and the scale on the right a soft shade.
+- New here? A small card at the bottom says how to look round, zoom and fly. It goes away once you have tried.
+- On a phone the small buttons are easier to hit. They look the same and take taps over a larger area.
+- The fonts now come from gcdatlas itself, so the site asks no other company's servers for anything.
+
+## 0.27.2 · 10 Nov 2026 · Smoother on slow devices
+- The atlas takes about half as much of your processor's time for each frame, so motion is smoother on phones and older laptops.
+- Detail is no longer lowered when a slow processor is the cause. Bigger characters would not have made it any faster.
+- The first picture appears a little sooner, and "loading the atlas..." shows while you wait.
+
+## 0.27.1 · 9 Nov 2026 · Smoother landings on the Moon
+- Flying down to a place on the Moon no longer swings the camera round at the very end.
+- Standing by a lander, the ground now reaches all the way to the horizon.
+- Hadley Rille and the Apollo 15 site keep their sharpest ground in view.
+- Tycho and Copernicus show their real sizes in the atlas: 85 km and 96 km across.
+
+## 0.27.0 · 9 Nov 2026 · The Moon up close
+- Fly down to Tranquility Base and the other five Apollo landing sites, Hadley Rille, Tycho and Copernicus, drawn in 3D from NASA's Lunar Reconnaissance Orbiter photos and heights.
+- Each lunar module's descent stage stands where its crew left it, as a small labelled model.
+- You arrive in the morning, the Sun as low as when the crews landed, so every crater and hill casts a long shadow.
+- Up close, the Moon's globe now shows NASA's real map of the whole Moon.
+- New tour, Footsteps on the Moon: the six landings in order, then Tycho and Copernicus.
+
+## 0.26.0 · 9 Nov 2026 · Earthquakes and fires, live
+- This week's earthquakes on the real Earth, from the USGS: a dot where each one struck and a ring for the last two days, red, violet or blue by how deep it was.
+- The last day's fires glow like embers on Earth's night side, from NASA's fire satellites.
+- From Earth's card, fly to the week's biggest quake or replay the whole week in 40 seconds.
+- A big one (magnitude 7 or more) in the last day gets a note when you look at Earth.
+- Turn them off in settings, under show: quakes & fires.
+
+## 0.25.1 · 9 Nov 2026 · Every place's page, from the atlas
+- The last line of the atlas list now links to every place as a page to read (gcdatlas.com/places). It opens in a new tab, so the atlas stays where you left it.
+- The browser tab now says what this is: gcdatlas · the real universe, drawn in ASCII.
+
+## 0.25.0 · 9 Nov 2026 · Every Messier object
+- The last 28 Messier objects, so all 110 are here: 20 galaxies, 6 star clusters, and M40 and M73.
+- The Virgo Cluster is a place of its own: its 16 Messier galaxies at their measured distances, and about 1,000 more galaxies around them.
+- M40 and M73 look like little groups from Earth, but their stars lie hundreds of light-years apart. Fly round them to see it.
+- M32 and M110, Andromeda's two bright companions, have their own places in the atlas now.
+- A new badge for seeing all 110, and the Messier marathon tour now visits every one.
+
+## 0.24.1 · 8 Nov 2026 · A page for every place
+- Every place in the atlas has a page of its own to read: its picture, what it is, how far away and how big, and more places like it. See them all at gcdatlas.com/places.
+- Search engines can find these pages now, so looking up a place can lead you here.
+- A button on each page opens the place in the atlas. Shared links still open the atlas straight away.
+- Visits to these pages are counted the way the atlas counts them: the page's address only, no cookies, nothing kept on your device.
+
 ## 0.24.0 · 25 Oct 2026 · Links that show the place
 - Share a place and the link now unfurls as that place on Discord, Slack, X, WhatsApp and the rest: its name, a line about it and its own picture.
 - The copied link still opens exactly the view you were on, and every old link keeps working.

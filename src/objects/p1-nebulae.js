@@ -16,6 +16,10 @@ function clusterPS(n, c, s, hot = 22000, extra){
 const nebView = (pos, extra = []) => [{ dirFn:() => V.norm(V.mul(pos, -1)), k:1.6, hold:9, drift:0.02 }, ...extra];
 
 // ---------------------------------------------------------------- the Orion Nebula (M42): a bowl blown into a molecular cloud by the Trapezium stars
+// (0.27.8, owner's pick from stills: dust lanes. Its first angle was a smooth white blob and its closest a screen of white: the glow was
+// about twice what the glyphs can show, and smooth. Now it is half as bright, the bowl's wall and the heart carry filaments (`fl`, `fl2`,
+// ridge noise), the outer glow is two wings sweeping west (`lobe`) instead of a ring, the Fish's Mouth is wider, and dust veils cross
+// the core (`veil`).)
 const FS_ORION = COMMON + `
 void main(){
   vec3 o, d; localRay(o, d);
@@ -31,23 +35,23 @@ void main(){
     float bowl = length((q - vec3(0.03, 0.02, 0.28))*vec3(1., 1.12, 1.25));
     float wall = exp(-pow((bowl - 0.58)/0.15, 2.))*smoothstep(0.3, -0.35, q.z);
     float g = fbmW(p*3.3 + vec3(0., 0., tm*0.004));
-    float em = wall*(0.3 + 2.2*g*g) + exp(-bowl*bowl*5.)*0.9*(0.35 + g);
+    float fl = pow(ridge(q*4.2 + 1.7), 4.), fl2 = pow(ridge(q*9. + 5.), 6.); float em = wall*(0.04 + 2.6*g*g*g + 2.2*fl + 1.2*fl2) + exp(-bowl*bowl*5.)*0.55*(0.12 + 1.3*g*g + 1.5*fl);
     // the Orion Bar: an ionisation front seen edge-on, south-east of the Trapezium
     vec2 bq = rot2(0.5)*(p.xy - vec2(0.18, -0.2));
     float bar = exp(-pow(bq.y/0.035, 2.))*smoothstep(0.42, 0.05, abs(bq.x))*smoothstep(0.35, -0.25, p.z);
     em += bar*(0.6 + 1.4*ridge(p*10.))*1.6;
     // outer wings and the M43 bubble to the north
-    em += exp(-pow((length(p.xy*vec2(0.85, 1.15)) - 0.74)/0.13, 2.))*smoothstep(0.45, -0.5, p.z)*(0.2 + ridge(p*4. + 2.))*0.55;
+    { vec2 wq = p.xy - vec2(0.05, 0.0); float ang = atan(wq.y, wq.x), rr = length(wq); float lobe = exp(-pow((ang - 0.55)/0.42, 2.)) + exp(-pow((ang + 0.75)/0.5, 2.)) + 0.35*exp(-pow((abs(ang) - 2.4)/0.5, 2.)); em += lobe*exp(-pow((rr - 0.55)/0.25, 2.))*smoothstep(0.45, -0.5, p.z)*(0.1 + 1.6*pow(ridge(p*5. + 2.), 3.))*0.75; }
     em += exp(-pow((length(p - vec3(0.02, 0.62, -0.1)) - 0.12)/0.05, 2.))*0.9;
-    em += exp(-dot(p.xy - vec2(0.02, 0.0), p.xy - vec2(0.02, 0.0))*22.)*smoothstep(-0.2, 0.25, p.z)*smoothstep(0.5, 0.2, p.z)*1.6*(0.6 + g);   // the bright heart around the Trapezium
+    em += exp(-dot(p.xy - vec2(0.02, 0.0), p.xy - vec2(0.02, 0.0))*22.)*smoothstep(-0.2, 0.25, p.z)*smoothstep(0.5, 0.2, p.z)*1.5*(0.25 + 0.8*g + 1.4*fl);   // the bright heart around the Trapezium
     float hot = exp(-dot(p.xy, p.xy)*7.)*smoothstep(-0.6, 0.2, p.z);
     vec3 c = mix(vec3(1., 0.32, 0.3), vec3(0.42, 1., 0.78), hot*0.85);
     c = mix(c, vec3(1., 0.62, 0.45), bar*0.5);
     // dust: the Fish's Mouth lane, foreground veils, and the dark cloud the bowl is carved into
-    float lane = smoothstep(0.08, 0., abs(p.y - 0.3 - 0.12*sin(p.x*5.)) - 0.05*fbm3(p*6.))*smoothstep(0.42, 0.12, abs(p.x + 0.1))*smoothstep(-0.1, 0.35, p.z);
-    float veil = smoothstep(0.56, 0.8, fbm3(p*2.4 + 20.))*smoothstep(0.1, 0.6, p.z)*0.8;
+    float lane = smoothstep(0.1, 0., abs(p.y - 0.3 - 0.12*sin(p.x*5.)) - 0.07*fbm3(p*6.))*smoothstep(0.42, 0.12, abs(p.x + 0.1))*smoothstep(-0.1, 0.35, p.z);
+    float veil = (smoothstep(0.5, 0.72, fbm3(p*3.1 + 20.))*1.6 + smoothstep(0.62, 0.9, ridge(p*6. + 9.))*1.2)*smoothstep(0.05, 0.55, p.z);
     float back = smoothstep(-0.25, -0.75, p.z)*smoothstep(0.5, 1., r);
-    col += T*c*em*dt*5.;
+    col += T*c*em*dt*2.6;   // (was 5: the core burned to one block of heavy glyphs)
     T *= exp(-(lane*16. + veil*1.4 + back*3.)*dt);
     if(T < 0.01) break;
   }
@@ -118,7 +122,11 @@ const horsehead = (() => {
 })();
 
 // ---------------------------------------------------------------- ring-shaped planetary nebulae: the Helix (NGC 7293) and the Ring (M57)
-// uP0: ring radius, width, barrel half-length, inner fill   uP1: second ring radius, tilt, strength, halo radius   uP2: halo strength, knot glow, colour shift
+// uP0: ring radius, width, barrel half-length, inner fill   uP1: second ring radius, tilt, strength, halo radius   uP2: halo strength, knot glow, colour shift,
+// the look before 0.27.9 (1: Pease 1, which sits among M15's stars and was not part of that change: from the Codex review of PR 72)
+// (0.27.9, the owner's pick from stills: the Helix, the Southern Ring and the Ring Nebula read as rings in dark sky. Their glow filled 40 to
+// 80% of the screen with a bright middle: now about half the light, a faint inner fill (a dark middle, as in the photos), an outer halo of
+// ridges rather than a smooth band, and the first angle further back, at 2.6 radii)
 const FS_RINGPN = COMMON + `
 float barrel(vec3 q, float R, float W, float Hh){ float rho = length(q.xy); return exp(-pow((rho - R*(1. + 0.14*q.z*q.z/(Hh*Hh)))/W, 2.))*smoothstep(Hh, Hh*0.55, abs(q.z)); }
 void main(){
@@ -128,7 +136,7 @@ void main(){
   float t0 = max(h.x, 0.), dt = (h.y - t0)/float(N), jit = hash12(gl_FragCoord.xy)*dt, tm = uTime;
   float R = uP0.x, W = uP0.y, Hh = uP0.z;
   vec3 col = vec3(0.); float T = 1.;
-  mat2 tl = rot2(uP1.y);
+  mat2 tl = rot2(uP1.y); float cl = step(0.5, uP2.w);
   for(int i=0;i<70;i++){
     if(i >= N) break;
     vec3 p = o + d*(t0 + jit + dt*float(i));
@@ -136,12 +144,13 @@ void main(){
     float b = barrel(p, R, W, Hh)*(0.35 + 1.3*n);
     vec3 p2 = vec3(p.x, tl*p.yz); float b2 = uP1.z > 0. ? barrel(p2, uP1.x, W*1.2, Hh*1.3)*(0.3 + 1.2*n)*uP1.z : 0.;
     float rho = length(p.xy);
-    float fill = smoothstep(R, R*0.2, rho)*smoothstep(Hh*1.2, 0., abs(p.z))*uP0.w*(0.4 + n);
-    float halo = uP2.x > 0. ? exp(-pow((length(p) - uP1.w)/0.06, 2.))*(0.2 + pow(ridge(p*6. + 3.), 2.))*uP2.x : 0.;
+    float fill = smoothstep(R, R*0.2, rho)*smoothstep(Hh*1.2, 0., abs(p.z))*uP0.w*mix(0.12 + 0.6*n*n, 0.4 + n, cl);
+    float rg = uP2.x > 0. ? ridge(p*6. + 3.) : 0.;
+    float halo = uP2.x > 0. ? exp(-pow((length(p) - uP1.w)/0.06, 2.))*mix(0.05 + 1.2*rg*rg*rg, 0.2 + rg*rg, cl)*uP2.x : 0.;
     vec3 inner = mix(vec3(0.3, 0.85, 1.), vec3(0.35, 1., 0.75), uP2.z);
     vec3 rimc = mix(vec3(1., 0.38, 0.3), vec3(1., 0.55, 0.35), n);
     vec3 c = mix(inner, rimc, smoothstep(R - W*0.8, R + W*0.5, rho));
-    col += T*(c*(b + b2)*1.5 + inner*fill*0.8 + vec3(1., 0.3, 0.3)*halo)*dt*2.2;
+    col += T*(c*(b + b2)*1.5 + inner*fill*0.8 + vec3(1., 0.3, 0.3)*halo)*dt*mix(1.25, 2.2, cl);
     T *= exp(-(b + b2)*0.6*dt);
   }
   col += vec3(0.8, 0.88, 1.)*(pblob(o, d, vec3(0.), 0.004)*260. + blob(o, d, vec3(0.), 0.03)*0.35);
@@ -169,7 +178,7 @@ const helix = (() => {
     fact:'One of the closest planetary nebulae: the outer layers of a dying Sun-like star, blown into a double ring that looks like a giant eye. Its inner edge is peppered with thousands of comet-shaped knots.',
     aka:'ngc 7293 eye of god planetary nebula', hero:V.norm([0.1, 0.25, 1]), roll:20,
     u:[[0.42, 0.09, 0.45, 0.25], [0.66, 0.9, 0.7, 0.93], [0.55, 1, 0.2, 0]],
-    views:nebView(pos, [{ d:[0.6, 0.3, 0.7], k:1.2, hold:8, drift:0.03 }, { d:[0.05, 0.1, 1], k:0.5, off:[0.3, 0.1, 0], hold:8, drift:0.02 }]),
+    views:[{ dirFn:() => V.norm(V.mul(pos, -1)), k:2.6, hold:9, drift:0.02 }, { d:[0.6, 0.3, 0.7], k:1.2, hold:8, drift:0.03 }, { d:[0.05, 0.1, 1], k:0.5, off:[0.3, 0.1, 0], hold:8, drift:0.02 }],
     particles:[{ ps:heads, prog:'ptBasic', mode:1, sb:1.2, size:1.6 }, { ps:tails, prog:'lnBasic', lines:true, mode:1, sb:0.8, size:1 }],
     readout:() => '655 light-years · 2.9 light-years across\nits central white dwarf is about 100,000 °C' });
 })();
@@ -178,7 +187,7 @@ const ringNeb = addRingPN({ key:'ringneb', name:'Ring Nebula', label:'Ring Nebul
   fact:'A glowing barrel of gas thrown off by a dying star, seen almost end-on so it looks like a smoke ring. The blue-green centre is oxygen; the red rim is hydrogen and nitrogen.',
   aka:'m57 ngc 6720 planetary nebula lyra', hero:V.norm([0.05, 0.1, 1]), roll:-30,
   u:[[0.46, 0.1, 0.55, 0.45], [0, 0, 0, 0.9], [0.35, 0, 0.8, 0]],
-  views:[{ dirFn:() => V.norm(V.mul(ringNeb.pos, -1)), k:1.8, hold:9, drift:0.02 }, { d:[1, 0.2, 0.1], k:2.3, hold:8, drift:0.03 }, { d:[0.3, 0.15, 1], k:0.7, hold:7, drift:0.02 }],
+  views:[{ dirFn:() => V.norm(V.mul(ringNeb.pos, -1)), k:2.6, hold:9, drift:0.02 }, { d:[1, 0.2, 0.1], k:2.3, hold:8, drift:0.03 }, { d:[0.3, 0.15, 1], k:0.7, hold:7, drift:0.02 }],
   // (tours play only the ring seen from Earth: from the side the barrel is a solid block of bright characters, even set back in dark sky,
   // and the closest angle fills the screen with them)
   tourViews:[0],

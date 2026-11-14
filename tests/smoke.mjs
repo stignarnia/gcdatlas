@@ -153,6 +153,8 @@ const atl = await page.evaluate(() => {
   // the badge tray: every badge is a button; black hole hunter shows the black holes left, planet hopper just the planets left; Esc closes the tray first, then the atlas
   $('#seenBtn').click(); r.tray = [!$('#badgeTray').hidden, $('#seenBtn').getAttribute('aria-expanded'), document.querySelectorAll('#badges .brow').length, document.querySelectorAll('#badges button.brow').length];
   const badge = n => [...document.querySelectorAll('#badges button.brow')].find(b => b.textContent.includes(n));
+  // (the Messier badge counts every place holding a Messier number: all 110 since 0.25.0, so one missing or claimed twice shows here)
+  r.messier = (badge('Messier marathoner') || {}).textContent || '';
   badge('black hole hunter').click();
   r.badgeGo = [C.dbg.ATL.cat, C.dbg.ATL.unseen, !$('#badgeTray').hidden, $('#atlasResultTxt').textContent];
   $('#seenBtn').click(); badge('planet hopper').click();
@@ -162,6 +164,19 @@ const atl = await page.evaluate(() => {
   r.out = out; return r;
 });
 errors.push(...atl.out);
+// the home page's link to /places, every place as a page (0.25.1): in the page's own HTML inside the atlas list, so a crawler that cannot run
+// the script (it stops at once without WebGL 2) finds it, and the list's last line in every view. Opened as a file, as here, it goes to the site's
+{ const html = (await import('node:fs')).readFileSync(new URL('../dist/index.html', import.meta.url), 'utf8'), i = html.indexOf('id="atlasList"');
+  if (i < 0 || !/<div class="aend" id="atlasEnd">[^<]*<a href="\/places"[^>]*>every place as a page/.test(html.slice(i, html.indexOf('</aside>', i))))
+    errors.push('the page itself has no link to /places at the end of the atlas list (src/01-body.html)');
+  const end = await page.evaluate(() => { const $ = s => document.querySelector(s), out = [], last = w => { const l = $('#atlasList').lastElementChild, a = $('#atlasEnd a');
+      if (!l || l.id !== 'atlasEnd' || l.hidden || !a || a.getAttribute('href') !== 'https://gcdatlas.com/places' || a.target !== '_blank') out.push(`${w}: the last line of the atlas is ${l && (l.id || l.className)}, its link ${a && a.href}`); };
+    if ($('#atlas').hidden) $('#btnAtlas').click();
+    last('all kinds'); $('#atlasCats [data-cat="bh"]').click(); last('black holes');
+    const s = $('#atlasSearch'); s.value = 'm87'; s.dispatchEvent(new Event('input', { bubbles:true })); last('a search');
+    $('#atlasReset').click(); $('#atlasSort [data-sort="distance"]').click(); last('by distance');
+    $('#atlasReset').click(); $('#atlasClose').click(); return out; });
+  errors.push(...end); }
 // (how many places the atlas lists, counted from the page, so a content pack does not have to change these checks)
 const NPL = await page.evaluate(() => { const C = window.__cosmos; return C.OBJ.filter(o => o.atlas !== false && !o.marker && C.dbg.GROUPS.some(([g]) => g === o.group)).length; });
 if (atl.cells !== 14) errors.push('the atlas has ' + atl.cells + ' cells ("all", 12 kinds and "on Earth" expected)');
@@ -175,7 +190,8 @@ if (!atl.search.jupiter || !new RegExp(`^\\d+ found · searching all ${NPL}$`).t
 if (atl.cleared.box || atl.cleared.cat !== 'bh' || atl.cleared.n !== 8 || atl.cleared.kb) errors.push('clearing the search: ' + JSON.stringify(atl.cleared));
 if (atl.kRight !== 'galaxies' || atl.kDown.join() !== 'human,human' || atl.kAll.join() !== 'all,atlasAll,radio,atlasCats') errors.push('arrow keys in the kinds: ' + JSON.stringify([atl.kRight, atl.kDown, atl.kAll]));
 if (!/^8 black holes not seen yet/.test(atl.seenNow[0]) || !/^7 black holes not seen yet/.test(atl.seenNow[1]) || atl.seenNow[2] !== '7' || atl.seenNow[3] !== `7 of ${NPL}` || !atl.seenNow[4]) errors.push('a place seen with "not seen yet" on: ' + JSON.stringify(atl.seenNow));
-if (!atl.tray[0] || atl.tray[1] !== 'true' || atl.tray[2] !== 9 || atl.tray[3] !== 9) errors.push('the badge tray: ' + JSON.stringify(atl.tray));
+if (!atl.tray[0] || atl.tray[1] !== 'true' || atl.tray[2] !== 10 || atl.tray[3] !== 10) errors.push('the badge tray: ' + JSON.stringify(atl.tray));
+if (!/of 110\b/.test(atl.messier)) errors.push('the Messier badge does not count all 110 Messier objects: ' + JSON.stringify(atl.messier));
 if (atl.badgeGo[0] !== 'bh' || !atl.badgeGo[1] || atl.badgeGo[2] || !/^7 black holes not seen yet/.test(atl.badgeGo[3])) errors.push('black hole hunter does not show the black holes left: ' + JSON.stringify(atl.badgeGo));
 const planetsLeft = atl.planets[1] ? atl.planets[1].split(',') : [], PL = ['Mercury', 'Venus', 'Earth', 'Mars', 'Jupiter', 'Saturn', 'Uranus', 'Neptune'];
 if (atl.planets[0] !== planetsLeft.length + ' places not seen yet for planet hopper' || !planetsLeft.length || planetsLeft.some(n => !PL.includes(n)) || atl.planets[2]) errors.push('planet hopper does not show just the planets: ' + JSON.stringify(atl.planets));
@@ -186,7 +202,7 @@ if (atl.reset[0] || atl.reset[1] !== '{"sort":"kind","dir":1,"cat":"all","unseen
 // first, with the keyboard on it, in every order of the list (M87 before its jet and M87*, the Eagle Nebula before the Pillars), and clearing
 // the search puts the list back as it was
 const CATQ = [['M31', 'Andromeda Galaxy'], ['NGC 1976', 'Orion Nebula'], ['NGC1952', 'Crab Nebula'], ['m 42', 'Orion Nebula'], ['Messier 42', 'Orion Nebula'],
-  ['NGC 224', 'Andromeda Galaxy'], ['ngc 5194', 'Whirlpool Galaxy'], ['M110', 'Andromeda Galaxy'], ['IC 434', 'Horsehead Nebula'], ['M16', 'Eagle Nebula'], ['m87', 'M87'], ['M4', 'M4'], ['M44', 'Beehive Cluster'], ['NGC 6853', 'Dumbbell Nebula'], ['m 17', 'Omega Nebula']];
+  ['NGC 224', 'Andromeda Galaxy'], ['ngc 5194', 'Whirlpool Galaxy'], ['M110', 'M110'], ['IC 434', 'Horsehead Nebula'], ['M16', 'Eagle Nebula'], ['m87', 'M87'], ['M4', 'M4'], ['M44', 'Beehive Cluster'], ['NGC 6853', 'Dumbbell Nebula'], ['m 17', 'Omega Nebula']];
 const cat = await page.evaluate(CATQ => {
   const $ = s => document.querySelector(s), out = [], names = () => [...document.querySelectorAll('.arow')].filter(b => !b.hidden).map(b => b.querySelector('.an').textContent);
   const find = (box, q) => { const s = $(box); s.value = q; s.dispatchEvent(new Event('input', { bubbles:true })); const kb = $('.arow.kb'); return { v:names(), kb:kb && kb.querySelector('.an').textContent }; };
@@ -279,7 +295,6 @@ const reload = async (saved, seen) => {
   await page.evaluate(([a, s]) => { localStorage.setItem('gcdatlas.atlas', JSON.stringify(a)); if (s) localStorage.setItem('gcdatlas.seen', JSON.stringify(s)); }, [saved, seen]);
   await page.goto('about:blank'); await page.goto(PAGE);
   await page.waitForFunction(() => window.__cosmos && window.__cosmos.OBJ, null, { timeout:60000 });
-  await page.waitForTimeout(300);
   return page.evaluate(() => { const A = window.__cosmos.dbg.ATL, b = document.querySelector('#atlasCats [aria-checked="true"]');
     return [A.sort, A.dir, b ? b.dataset.cat : 'all', document.querySelector('#atlasUnseen').getAttribute('aria-checked')].join(' '); });
 };
@@ -299,7 +314,7 @@ await page.evaluate(() => { localStorage.removeItem('gcdatlas.atlas'); localStor
 { const sp = await page.evaluate(() => { const c = window.__cosmos, d = c.dbg;
     const keys = Array.isArray(window.__SHARE_PAGES) ? window.__SHARE_PAGES : null;
     return { keys:!!keys, dead:(keys || []).filter(k => !c.BYKEY[k] || !d.shareable(c.BYKEY[k])), missing:keys ? d.shareList().filter(e => !keys.includes(e.key)).length : -1,
-      page:d.sharePage(c.BYKEY.m87bh), own:d.sharePage(c.BYKEY['earth-iconic-giza']), not:d.sharePage(c.BYKEY.m32 || c.OBJ.find(o => o.atlas === false && !o.own && !o.marker)) }; });
+      page:d.sharePage(c.BYKEY.m87bh), own:d.sharePage(c.BYKEY['earth-iconic-giza']), not:d.sharePage(c.BYKEY.ngc3628 || c.OBJ.find(o => o.atlas === false && !o.own && !o.marker)) }; });
   if (!sp.keys) errors.push('the page carries no __SHARE_PAGES list (build.mjs)');
   else {
     if (sp.dead.length) errors.push('share pages for places that are gone or not shareable: ' + sp.dead.join(', ') + ' (npm run og -- --all)');
@@ -314,6 +329,60 @@ for (const h of ['#o=constructor', '#o=__proto__', '#o=earth&jd=abc&deep=x&c=1,N
   await page.goto('about:blank'); await page.goto(PAGE + h);   // (a real load: changing only the hash would not restart the page)
   const ok = await page.waitForFunction(() => window.__cosmos && window.__cosmos.OBJ && isFinite(window.__cosmos.cam.rel[0]) && window.__cosmos.BYKEY.earth.pos.every(isFinite), null, { timeout:60000 }).then(() => true, () => false);
   if (!ok) errors.push('share link ' + h + ' broke the page');
+}
+// 0.27.2, the cost of the page's words. Until then `body:has(#view.dragging) *` made every text the page wrote (a readout, the ruler's number)
+// a reason to work out the style of all 1,800 elements again, 4 ms a time on a fast desk, most frames while riding the Halo. So: writing a
+// word may only restyle a handful of elements (a Chrome trace says how many each style pass touched); the loading line is in the page's
+// own HTML before the script and gone once the page is up; the music, wished for at start-up, is made right after the first frame; and
+// the page knows how long the main thread works on a frame (what the detail rule reads).
+{ await page.goto('about:blank'); await page.goto(PAGE);
+  await page.waitForFunction(() => window.__cosmos && window.__cosmos.OBJ, null, { timeout:60000 });
+  const html = (await import('node:fs')).readFileSync(new URL(PAGE), 'utf8'), bootAt = html.indexOf('id="boot"');
+  if (bootAt < 0 || bootAt > html.indexOf("'use strict';")) errors.push('the loading line (#boot) is not in the page\'s HTML before the script');
+  if (await page.evaluate(() => !!document.querySelector('#boot'))) errors.push('the loading line is still there once the page is up');
+  await page.waitForFunction(() => !!window.__cosmos.music._dbg.ctx || !(window.AudioContext || window.webkitAudioContext), null, { timeout:5000 }).catch(() => errors.push('the music was not made after the first frame (music.warm)'));
+  await page.waitForFunction(() => window.__cosmos.dbg.busyMs > 0 && window.__cosmos.dbg.busyMs < 250 && typeof window.__cosmos.dbg.cpuBound === 'boolean', null, { timeout:5000 }).catch(() => errors.push('no measure of the main thread\'s work a frame (dbg.busyMs)'));
+  const cdp = await page.context().newCDPSession(page), ev = [];
+  cdp.on('Tracing.dataCollected', d => { for (const e of d.value) if (e.name === 'UpdateLayoutTree' && e.ph === 'X') ev.push((e.args && e.args.elementCount) || 0); });
+  await cdp.send('Tracing.start', { transferMode:'ReportEvents', traceConfig:{ includedCategories:['devtools.timeline', 'blink'] } });
+  const total = await page.evaluate(() => { const $ = s => document.querySelector(s); let n = 0;
+    for (const [sel, t] of [['#scaleTxt', '= 7 km'], ['#readout', 'a test line'], ['#ladTxt', 'test · 5 km'], ['#objFact', 'A test fact.']]){ const el = $(sel); if (!el) continue; el.textContent = t; getComputedStyle(el).color; n++; }
+    return n ? document.querySelectorAll('*').length : 0; });
+  const done = new Promise(r => cdp.once('Tracing.tracingComplete', r)); await cdp.send('Tracing.end'); await done;
+  const most = Math.max(0, ...ev);
+  if (!total || !ev.length) errors.push('the style test wrote no words or saw no style pass (' + total + ' elements, ' + ev.length + ' passes)');
+  else if (most > 200) errors.push(`writing a word restyles ${most} of the page's ${total} elements (a page-wide rule such as body:has(...)?)`);
+}
+// 0.27.3, readability. The fonts are the page's own files (no other host is asked for anything; only the artifact page, served alone, keeps
+// Google's stylesheet) and load from a file as well; every label has its dark plate and the scale its shade; the first-visit hint is a
+// card that stays through a scripted action, goes at the first real drag and does not come back.
+{ const fsm = await import('node:fs'), dist = new URL('.', new URL(PAGE)), read = f => fsm.readFileSync(new URL(f, dist), 'utf8');
+  for (const f of ['index.html', 'lab.html', 'songs.html', 'places.html', 'places/orion.html']) if (/fonts\.(googleapis|gstatic)\.com/.test(read(f))) errors.push(f + ' still asks Google for its fonts');
+  if (!/fonts\.googleapis\.com/.test(read('artifact.html'))) errors.push('the artifact page lost its fonts (it is served alone and cannot reach fonts/)');
+  const files = [...read('index.html').matchAll(/url\((fonts\/[^)]+\.woff2)\)/g)].map(m => m[1]);
+  if (files.length !== 4) errors.push('the page names ' + files.length + ' font files, not 4');
+  for (const f of files) if (!fsm.existsSync(new URL(f, dist))) errors.push('font file missing from dist: ' + f);
+  const fonts = await page.evaluate(async () => { await document.fonts.ready; return [...document.fonts].filter(f => f.status === 'loaded').map(f => f.family.replace(/"/g, '') + ' ' + f.weight); });
+  for (const f of ['IBM Plex Mono 400', 'IBM Plex Mono 500', 'Major Mono Display 400']) if (!fonts.includes(f)) errors.push('font not loaded from the page\'s own files: ' + f + ' (loaded: ' + fonts.join(', ') + ')');
+  const look = await page.evaluate(() => { const a = c => +(String(c).match(/rgba\([^)]*,\s*([\d.]+)\)/) || [0, c && c.startsWith('rgb(') ? 1 : 0])[1];
+    return { plate:a(getComputedStyle(document.querySelector('#labels .lab')).backgroundColor), shade:getComputedStyle(document.querySelector('#ladder'), '::before').backgroundImage.includes('gradient'), hintOff:document.querySelector('#hint').hidden }; });
+  if (!(look.plate > 0.5)) errors.push('labels have no dark plate behind them (alpha ' + look.plate + ')');
+  if (!look.shade) errors.push('the scale has no shade under it');
+  if (!look.hintOff) errors.push('the hint card shows in a test page (tests/lib.mjs leaves it out)');
+  const h = await openPage({ hint:true });
+  const hint = () => h.page.evaluate(() => { const e = document.querySelector('#hint'), cs = getComputedStyle(e); return { shown:!e.hidden && cs.display !== 'none' && +cs.opacity > 0.9, words:e.innerText.replace(/\s+/g, ' ').trim(), saved:localStorage.getItem('gcdatlas.hinted') }; });
+  let s = await hint();
+  if (!s.shown || !/^drag to look round scroll to zoom, from a planet out to the whole universe click anything to fly there \/ to search$/.test(s.words)) errors.push('a first visit does not show the hint card: ' + JSON.stringify(s));
+  await h.page.evaluate(() => window.__cosmos.goHome()); await h.page.waitForTimeout(1200); s = await hint();
+  if (!s.shown || s.saved) errors.push('a scripted action took the hint card away: ' + JSON.stringify(s));
+  await h.page.mouse.move(640, 420); await h.page.keyboard.press('Shift'); await h.page.waitForTimeout(300); s = await hint();
+  if (!s.shown || s.saved) errors.push('moving the mouse or pressing Shift took the hint card away: ' + JSON.stringify(s));
+  // (any real press counts, not only one whose handler calls hideHint: the atlas button opens the atlas, and the card goes)
+  await h.page.click('#btnAtlas'); await h.page.waitForTimeout(1300); s = await hint();
+  if (s.shown || s.saved !== '1') errors.push('a real click on a button did not take the hint card away for good: ' + JSON.stringify(s));
+  await h.page.reload(); await h.page.waitForFunction(() => window.__cosmos && window.__cosmos.OBJ, null, { timeout:60000 }); s = await hint();
+  if (s.shown) errors.push('the hint card came back on the next visit');
+  errors.push(...h.errors); await h.browser.close();
 }
 report('smoke', errors, `${keys.length} objects rendered, ${ui.rows} atlas rows · atlas controls fit at 90 to 160% menu text, room for ${atl.rows} rows at 1280 x 800 · ${atl.solar}`);
 await browser.close();

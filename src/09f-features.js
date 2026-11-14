@@ -14,6 +14,8 @@ const BADGES = [
   { id:'bh', name:'black hole hunter', test:o => o.prog === P.blackhole || o.isBH },
   { id:'nebulae', name:'nebula chaser', test:o => o.group === 'nebulae' },
   { id:'galaxies', name:'galaxy collector', test:o => catOf(o) === 'galaxies', need:12 },
+  // (0.25.0, with the list complete: every place holding a Messier number, the same ones the Messier marathon visits, counted by number)
+  { id:'messier', name:'Messier marathoner', test:o => messierOf(o).size > 0, count:o => messierOf(o).size },
   { id:'grand', name:'grand tourist', grand:true },
   { id:'edge', name:'edge of everything', keys:['universe'] },
   { id:'halo', name:'ship spotter', keys:['halo'] },
@@ -28,7 +30,9 @@ function badgeProgress(b){
   else if (b.grand) pool = GRAND_KEYS;
   else if (b.test) pool = ATLAS_KEYS.filter(k => b.test(BYKEY[k]));
   else pool = ATLAS_KEYS;
-  const have = pool.filter(k => SEEN.has(k)).length, need = b.frac ? Math.ceil(pool.length*b.frac) : Math.min(b.need || pool.length, pool.length);
+  // (a badge with count weighs each place by it: the Messier badge counts numbers, so the Orion Nebula, M42 and M43, counts as two)
+  const sum = ks => b.count ? ks.reduce((a, k) => a + b.count(BYKEY[k]), 0) : ks.length, tot = sum(pool);
+  const have = sum(pool.filter(k => SEEN.has(k))), need = b.frac ? Math.ceil(tot*b.frac) : Math.min(b.need || tot, tot);
   return { have:Math.min(have, need), need, done:need > 0 && have >= need };
 }
 // the badge tray (opened from the atlas footer): one row per badge, "✓ planet hopper 8 of 8" once earned, "black hole hunter 3 of 8 ›" on the way.
@@ -92,10 +96,18 @@ function dailyStreak(){
   for (;;){ if (!log.has(dayKey(d))) break; n++; d.setUTCDate(d.getUTCDate() - 1); }
   return n;
 }
+// (0.28.4, owner: "i dont want this site to be like an ad fest and things to click/hide nonstop": the card fades on its own after DAILY_T,
+// unless the pointer rests on it, and counts as seen for the day either way, so it never comes back that day)
+const DAILY_T = 15000;
 function showDaily(){
-  const o = DAILY.o; $('#dailyName').textContent = o.name; $('#dailyType').textContent = o.type;
+  const o = DAILY.o, el = $('#daily'); $('#dailyName').textContent = o.name; $('#dailyType').textContent = o.type;
   const n = dailyStreak(); $('#dailyStreak').textContent = n > 1 ? `${n}-day streak` : '';
-  $('#daily').hidden = false;
+  el.classList.remove('going'); el.hidden = false; store.set('dailySeen', DAILY.key);
+  const t0 = performance.now(), step = () => { if (el.hidden) return;
+    if (el.matches(':hover')) return void setTimeout(step, 1000);
+    if (performance.now() - t0 < DAILY_T) return void setTimeout(step, 1000);
+    el.classList.add('going'); setTimeout(() => { el.hidden = true; el.classList.remove('going'); }, 1300); };
+  setTimeout(step, 1000);
 }
 $('#dailyGo').addEventListener('click', () => {
   const log = store.get('dailyLog', []); if (!log.includes(DAILY.key)){ log.push(DAILY.key); store.set('dailyLog', log.slice(-400)); }
@@ -135,7 +147,7 @@ function startSaver({ embedded = false } = {}){
   SAVER.on = true; SAVER.embedded = embedded; SAVER.startAt = performance.now();
   togglePanel(null, false); toggleAtlas(false); if (cmp) endCompare(false); $('#daily').hidden = true; if (!$('#help').hidden) toggleHelp(false);
 document.body.classList.add('saver'); $('#saverHud').hidden = embedded; if (!embedded) moveAngleLine(true);
-  if (embedded) hideHint();
+  if (embedded) hideHint(true);
   else try { if (document.fullscreenEnabled && !document.fullscreenElement){ SAVER.fs = true; document.documentElement.requestFullscreen().catch(() => { SAVER.fs = false; }); } } catch (e) {}
   SAVER.prevTravel = SET.travel; if (SET.travel === 'warp') SET.travel = 'quick';
   const tourChoice = (WALLPAPER && URLQ.get('tour')) || 'saver';

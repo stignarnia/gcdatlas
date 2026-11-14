@@ -2,11 +2,17 @@
 //   dist/index.html     the website (Vercel serves this)
 //   dist/artifact.html  the same page without the document wrapper (for a claude.ai artifact)
 //   dist/preview.html   only the head's tags, for link-preview bots (vercel.json)
+//   dist/p/<key>.html   every place's share page; dist/places/<key>.html and dist/places.html its page to read, and the list of them
+//   dist/sitemap.xml, dist/robots.txt   for search engines
 // Usage: node build.mjs            (no dependencies; Node 18+)
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { writePlacePages, short } from './tools/place-pages.mjs';
+import { fontHead, GOOGLE_FONTS } from './tools/lib/fonts.mjs';
+import { stripJS } from './tools/lib/strip.mjs';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.join(ROOT, 'src'), DIST = path.join(ROOT, 'dist');
@@ -24,7 +30,27 @@ const list = fs.readdirSync(SRC).filter(f => f.endsWith('.js'));
 if (fs.existsSync(path.join(SRC, 'objects'))) for (const f of fs.readdirSync(path.join(SRC, 'objects'))) if (f.endsWith('.js')) list.push('objects/' + f);
 list.sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
 
-const js = list.map(f => `\n// ---- ${f}\n` + read(f)).join('');
+// The open clusters' star lists (0.27.14) go to a file of their own, data/cs-<hash>.js, fetched when a cluster is first drawn (gaiaCluster in
+// p8-messier.js): the page keeps each cluster's numbers and its size, r98 and r90 (the radius in degrees holding 98% and 90% of its
+// members, worked out here exactly as the page did, so every cluster is placed and sized as before). The artifact page, served alone,
+// keeps the lists (CLUSTER_STARS_SRC null): it is the same script with one line put back.
+const CS_FILE = 'objects/p0-cluster-stars-data.js';
+const cs = (() => {
+  const src = read(CS_FILE), at = src.indexOf('const CLUSTER_STARS = ');
+  if (at < 0){ console.error(`${CS_FILE} has no "const CLUSTER_STARS = "`); process.exit(1); }
+  const all = Function('return ' + src.slice(at + 'const CLUSTER_STARS = '.length).trim().replace(/;\s*$/, ''))(), lists = {}, lean = {};
+  for (const [k, c] of Object.entries(all)){
+    const b = Buffer.from(c.s, 'base64'), r = [];
+    for (let i = 0; i < c.k; i++) r.push(Math.hypot(b.readInt16LE(i*6)/6000, b.readInt16LE(i*6 + 2)/6000));
+    r.sort((a, b) => a - b);
+    const { s, ...rest } = c; lists[k] = s; lean[k] = { ...rest, r98:r[Math.floor(0.98*(c.k - 1))], r90:r[Math.floor(0.9*(c.k - 1))] };
+  }
+  const lit = o => JSON.stringify(o).replace(/"(\w+)":/g, '$1:');
+  const file = `__clusterStars(${JSON.stringify(lists)});\n`, name = 'data/cs-' + crypto.createHash('sha256').update(file).digest('hex').slice(0, 10) + '.js';
+  const full = {}; for (const k in lean) full[k] = { ...lean[k], s:lists[k] };
+  return { file, name, fullLine:`const CLUSTER_STARS = ${lit(full)}; const CLUSTER_STARS_SRC = null;`, leanLine:`const CLUSTER_STARS = ${lit(lean)}; const CLUSTER_STARS_SRC = ${JSON.stringify(name)};` };
+})();
+const js = list.map(f => `\n// ---- ${f}\n` + (f === CS_FILE ? cs.fullLine + '\n' : read(f))).join('');
 try { new vm.Script(js, { filename: 'gcdatlas.js' }); }
 catch (e) { console.error('Syntax error in the bundled script:\n' + e.stack.split('\n').slice(0, 6).join('\n')); process.exit(1); }
 // every file shares one scope: two top-level functions with one name are not a syntax error, the later one silently replaces the first
@@ -32,6 +58,15 @@ catch (e) { console.error('Syntax error in the bundled script:\n' + e.stack.spli
 { const seen = new Map(), dup = [];
   for (const f of list) for (const m of read(f).matchAll(/^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/gm)){ if (seen.has(m[1])) dup.push(`${m[1]} (${seen.get(m[1])} and ${f})`); else seen.set(m[1], f); }
   if (dup.length){ console.error('The same top-level function name in two places:\n  ' + dup.join('\n  ')); process.exit(1); } }
+// the page gets the script without its comments and indentation (0.27.11, tools/lib/strip.mjs: they were 17% of it, about 130 KB of the
+// compressed page). GCD_NOSTRIP=1 node build.mjs keeps them, to read the built page or to compare the two (tests/smoke.mjs does).
+// Checks: the stripped script must compile, and everything removed must look like a comment (a regular expression read as division
+// would show up here as removed code)
+const { text:jsOut, comments:removed } = process.env.GCD_NOSTRIP ? { text:js, comments:[] } : stripJS(js);
+{ const odd = removed.filter(c => !(/^\/\/([ \t(\-=!\/*.,:;~>#|\[]|$)/.test(c) || c.startsWith('/*')));
+  if (odd.length){ console.error('tools/lib/strip.mjs removed text that does not look like a comment:\n  ' + odd.slice(0, 5).map(c => JSON.stringify(c.slice(0, 80))).join('\n  ')); process.exit(1); }
+  try { new vm.Script(jsOut, { filename: 'gcdatlas.min.js' }); }
+  catch (e) { console.error('The script without its comments does not compile (tools/lib/strip.mjs):\n' + e.stack.split('\n').slice(0, 6).join('\n')); process.exit(1); } }
 
 // the Earth's images (tools/earth-*.mjs) are served next to the page, never inside it: dist/earth/, folders and all (the tiles live in a
 // folder named after their set, 0.12.0); whatever is no longer in assets/earth goes
@@ -43,12 +78,19 @@ function syncDir(src, dst){
     if (dir) syncDir(a, b); else if (!fs.existsSync(b) || fs.statSync(b).size !== fs.statSync(a).size) fs.copyFileSync(a, b); }
 }
 { const src = path.join(ROOT, 'assets', 'earth'); if (fs.existsSync(src)) syncDir(src, path.join(DIST, 'earth')); }
+// (and the Moon's, 0.27.0: tools/moon-detail.mjs, served under /moon/)
+{ const src = path.join(ROOT, 'assets', 'moon'); if (fs.existsSync(src)) syncDir(src, path.join(DIST, 'moon')); }
 // the link preview (og:image, 1200 x 630, made by tools/og-image.mjs): what a shared link shows in a chat or a post
 fs.mkdirSync(DIST, { recursive: true });
 fs.copyFileSync(path.join(ROOT, 'assets', 'og.jpg'), path.join(DIST, 'og.jpg'));
 // every place's own picture (npm run og -- --all), served under /og/ for the share pages below
 { const src = path.join(ROOT, 'assets', 'og'); if (fs.existsSync(src)) syncDir(src, path.join(DIST, 'og')); }
-const head = read('00-head.html');
+// the fonts (0.27.3): our own files under fonts/ (assets/fonts, tools/lib/fonts.mjs), so the page asks no other host for anything.
+// The artifact page is served alone, away from dist/, and keeps Google's stylesheet (headAlone).
+{ const src = path.join(ROOT, 'assets', 'fonts'); if (fs.existsSync(src)) syncDir(src, path.join(DIST, 'fonts')); }
+const head0 = read('00-head.html');
+if (!head0.includes('<!--FONTS-->')){ console.error('src/00-head.html has no <!--FONTS--> line'); process.exit(1); }
+const head = head0.replace('<!--FONTS-->', fontHead('fonts/')), headAlone = head0.replace('<!--FONTS-->', GOOGLE_FONTS);
 // what's new: docs/PATCHNOTES.md ("## version · date · title", then "- " bullets) as the panel's HTML, newest first and open
 const esc = t => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const notes = [];
@@ -61,7 +103,12 @@ if (!notes.length){ console.error('docs/PATCHNOTES.md has no versions'); process
 const notesHtml = notes.map((n, i) => `<details data-v="${esc(n.v)}"${i ? '' : ' open'}><summary><span class="nv">${esc(n.v)}</span><span class="nd">${esc(n.date)}</span><span class="nt">${esc(n.title)}</span></summary><ul>${n.items.map(t => `<li>${esc(t)}</li>`).join('')}</ul></details>`).join('\n');
 const body = read('01-body.html').replace('<!--PATCHNOTES-->', notesHtml);
 const version = new Date().toISOString().slice(0, 10);
-const script = `<script>\n/* gcdatlas ${version} */\n${js}\n</script>\n`;
+if (jsOut.split(cs.fullLine).length !== 2){ console.error('the open clusters\' line is not in the script once, as written'); process.exit(1); }
+const scriptAlone = `<script>\n/* gcdatlas ${version} */\n${jsOut}\n</script>\n`;
+const script = scriptAlone.replace(cs.fullLine, () => cs.leanLine);
+{ const dir = path.join(DIST, 'data'); fs.mkdirSync(dir, { recursive:true });
+  for (const f of fs.readdirSync(dir)) if (/^cs-\w+\.js$/.test(f) && 'data/' + f !== cs.name) fs.rmSync(path.join(dir, f));
+  fs.writeFileSync(path.join(DIST, cs.name), cs.file); }
 
 const meta = `<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -90,13 +137,13 @@ const meta = `<meta charset="utf-8">
 // picture when assets/og/<key>.jpg exists, else the site's og.jpg. On a Vercel preview the tags carry the deployment's own address
 // rather than production's (not that bots can read a preview: previews sit behind Vercel authentication).
 const HOST = process.env.VERCEL_ENV && process.env.VERCEL_ENV !== 'production' && process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://gcdatlas.com';
-let shareKeys = [];
+let shareKeys = [], placePaths = [], placesMade = '';
 const metaFile = path.join(ROOT, 'tools', 'data', 'share-meta.json');
 if (fs.existsSync(metaFile)){
-  const places = JSON.parse(fs.readFileSync(metaFile, 'utf8'));
+  // (0.24.1: { made, groups, kinds, places }, each place with the text of its own page; before, the bare list of places)
+  const SM0 = JSON.parse(fs.readFileSync(metaFile, 'utf8')), SM = Array.isArray(SM0) ? { places:SM0 } : SM0, places = SM.places;
   const escA = s => esc(s).replace(/"/g, '&quot;');
-  // a card shows about two sentences: cut a long fact at a sentence end (the Halo's runs to 640 characters)
-  const short = s => { if (s.length <= 240) return s; const c = s.slice(0, 240), i = Math.max(c.lastIndexOf('. '), c.lastIndexOf('! ')); return i > 80 ? c.slice(0, i + 1) : c.slice(0, c.lastIndexOf(' ')); };
+  // (a card shows about two sentences: `short` cuts a long fact at a sentence end; the Halo's runs to 640 characters)
   const icon = meta.match(/<link rel="icon"[^>]*>/)[0];
   const pDir = path.join(DIST, 'p'); fs.mkdirSync(pDir, { recursive:true });
   for (const f of fs.readdirSync(pDir)) if (!places.some(e => e.key + '.html' === f)) fs.rmSync(path.join(pDir, f));
@@ -140,14 +187,26 @@ ${icon}
   }
   shareKeys = places.map(e => e.key);
   console.log(`share pages: ${places.length} under dist/p/`);
-} else console.warn('tools/data/share-meta.json is missing: no /p share pages (npm run og -- --all writes it)');
+  // every place's page to read, /places/<key>, and the list of them, /places (0.24.1, owner: findable in search; tools/place-pages.mjs)
+  placePaths = writePlacePages({ SM, DIST, ROOT, HOST, icon }); placesMade = SM.made || '';
+  console.log(`place pages: ${placePaths.length - 1} under dist/places/, and the list at /places`);
+} else console.warn('tools/data/share-meta.json is missing: no /p share pages or /places pages (npm run og -- --all writes it)');
+// for search engines (0.24.1): the sitemap lists the home page and every place page (the share pages /p/ go on into the atlas, so they are
+// not listed); robots.txt lets everything be read but the owner's two review pages and the data functions. The home page's date is the
+// build's, the place pages' the day their text was read from the page (npm run og -- --meta)
+{ const day = new Date().toISOString().slice(0, 10), url = (p, d) => `<url><loc>${HOST}${p}</loc>${d ? `<lastmod>${d}</lastmod>` : ''}</url>`;
+  fs.writeFileSync(path.join(DIST, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${[url('/', day), ...placePaths.map(p => url(p, placesMade))].join('\n')}\n</urlset>\n`);
+  fs.writeFileSync(path.join(DIST, 'robots.txt'), `# gcdatlas: everything may be read, except the owner's two review pages and the data functions\nUser-agent: *\nDisallow: /lab\nDisallow: /songs\nDisallow: /api/\n\nSitemap: ${HOST}/sitemap.xml\n`); }
 // the page learns which share pages exist (share() falls back to a #-link for the rest); the artifact build gets none, since it is
 // served alone, away from dist/
 const shareScript = `<script>window.__SHARE_PAGES=${JSON.stringify(shareKeys)};</script>\n`;
 
+// (the home page tells search engines what the site is, schema.org's WebSite: Google reads the site's name from it; on the home page only)
+const siteLd = `<script type="application/ld+json">${JSON.stringify({ '@context':'https://schema.org', '@type':'WebSite', name:'gcdatlas', url:'https://gcdatlas.com/',
+  description:meta.match(/<meta name="description" content="([^"]*)"/)[1] }).replace(/</g, '\\u003c')}</script>\n`;
 fs.mkdirSync(DIST, { recursive: true });
-fs.writeFileSync(path.join(DIST, 'index.html'), `<!doctype html>\n<html lang="en">\n<head>\n${meta}${head}\n</head>\n<body>\n${body}\n${shareScript}${script}</body>\n</html>\n`);
-fs.writeFileSync(path.join(DIST, 'artifact.html'), `${head}\n${body}\n${script}`);
+fs.writeFileSync(path.join(DIST, 'index.html'), `<!doctype html>\n<html lang="en">\n<head>\n${meta}${siteLd}${head}\n</head>\n<body>\n${body}\n${shareScript}${script}</body>\n</html>\n`);
+fs.writeFileSync(path.join(DIST, 'artifact.html'), `${headAlone}\n${body}\n${scriptAlone}`);
 // the lab (/lab): the same page, told before its script runs to open as a small stage for trying the Halo's looks (src/09l-lab.js); kept out of search
 const labHead = head.replace(/<title>[^<]*<\/title>/, '<title>gcdatlas lab</title>');
 fs.writeFileSync(path.join(DIST, 'lab.html'), `<!doctype html>\n<html lang="en">\n<head>\n${meta}<meta name="robots" content="noindex">\n${labHead}\n</head>\n<body>\n${body}\n<script>window.__LAB = 1;</script>\n${shareScript}${script}</body>\n</html>\n`);

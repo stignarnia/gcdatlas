@@ -608,7 +608,9 @@ canvas.addEventListener('pointerdown', e => {
   const lk = OBJ[orbit.lock], onRocket = LCAM.on || !!(lk && (lk.sx || lk.sxSite));
   if (pointers.size === 1) drag = { x0:e.clientX, y0:e.clientY, t0:performance.now(), moved:0, pan:(e.button === 2 || e.shiftKey) && !onRocket, turn:e.button === 2 || e.ctrlKey };
   else if (drag){ drag.moved = 99; drag.two = null; }   // (a new two-finger gesture starts from here)
-  canvas.classList.add('dragging');
+  // (the class on body stops text being selected under a drag. It was `body:has(#view.dragging) *` until 0.27.2: with :has() on body, every
+  // text the page wrote, a readout or the scale bar's number, made the browser work out the style of all 1,800 elements again, 4 ms a time)
+  canvas.classList.add('dragging'); document.body.classList.add('view-drag');
 });
 canvas.addEventListener('pointermove', e => {
   const p = pointers.get(e.pointerId); if (!p) return;
@@ -631,7 +633,7 @@ canvas.addEventListener('pointermove', e => {
   // (near a surface the ground follows the mouse, and a right-drag or Ctrl-drag turns and tilts: surfaceMode)
   const S = surfaceMode();
   if (S){
-    if (S.kind === 'ground' && !drag.turn) EPL.panPx(S.o, dx, dy);
+    if (S.kind === 'ground' && !drag.turn && !S.far) EPL.panPx(S.o, dx, dy);
     else { const k = drag.turn || S.kind === 'ground' ? 0.005 : grabK(S); orbit.yaw -= dx*k; orbit.pitch = clamp(orbit.pitch + dy*k, S.kind === 'ground' ? 0.03 : -1.52, 1.52); }
     return;
   }
@@ -645,9 +647,61 @@ canvas.addEventListener('pointermove', e => {
 // toward the cursor, W A S D and the arrows glide over the ground, Q E turn, R F tilt. Farther out the camera works as before.
 function surfaceMode(){
   const o = OBJ[orbit.lock]; if (!o || flight || SKYV.on || shipCam.on || LCAM.on || cmp) return null;
-  if (o.earthSpot) return { kind:'ground', o };
+  if (o.earthSpot) return { kind:'ground', o, far:EPL.rising(o) };   // (far: on the way out to the Earth, where a drag turns and the place stays put)
   if (o.solid && orbit.dist < o.rad*6 && !o.sx && !o.sxSite) return { kind:'globe', o, R:o.rad*o.solid*magOf(o) };
   return null;
+}
+// ---------------------------------------------------------------- scrolling out of a place on a body (0.27.12 for Earth, 0.27.13 for the Moon;
+// owner: zooming out of a place on Earth "spiralled out of control"). Locked on a place, the camera used to stay locked on it however far
+// out it went. Between a and 4a km from it the camera goes over from the place to its body: the point it circles glides from the place to
+// the body's middle, and its up turns from the place's vertical to the body's north, about the line of sight, so the camera itself never
+// swings. At the far end the picture is exactly the one a lock on the body gives, and the lock becomes that. How far over it is follows
+// the distance (scrolling back in before the end comes back to the place), but takes 1.7 s or more each way (longer for a big roll, at most about 50 degrees a second) (`o.riseW`): a hard scroll
+// passes both distances within a quarter of a second, and the up then rolled at 300 degrees a second. The place's update calls it before
+// its own framing (true: it has the camera this tick, so the place leaves its frame and ground clearance alone). Rb: the body's radius, km
+function riseK(a, d = orbit.dist){ return clamp(Math.log(Math.max(d/KM, 1e-9)/a)/Math.log(4), 0, 1); }
+// (scrolling back in on the way: the camera may come no nearer than the distance that matches how far over it still is, so the way back
+// keeps the same pace as the way out and never goes through the ground; the frame's zoom easing obeys it in the same tick, 09-render.js)
+const distFloor = { d:0, at:-1 };
+const turnAbout = (d, t) => { const c = Math.cos(t), s = Math.sin(t), col = v => V.add(V.add(V.mul(v, c), V.mul(V.cross(d, v), s)), V.mul(d, V.dot(d, v)*(1 - c)));
+  return [...col([1, 0, 0]), ...col([0, 1, 0]), ...col([0, 0, 1])]; };
+function riseTo(o, body, Rb, a){
+  // (only a camera moved by hand: a tour, the angles playing and a swing between two of them frame the place themselves)
+  // (riseAt: the last tick this ran; after a gap, a flight or a lock elsewhere, it starts from the place again)
+  const byHand = !tween && !tour.on && !show.on && !flyMove && !cmp && !shipCam.on, dt = GT - (o.riseAt == null ? GT : o.riseAt); o.riseAt = GT;
+  const d = M3.apply(o.R0, sphL(orbit.yaw, orbit.pitch)), F = camFrameOf(body);
+  // (the roll from the place's up to the body's, seen along the line of sight: up to half a turn, from Tycho's first angle 170 degrees)
+  const flat = y => { const v = V.sub(y, V.mul(d, V.dot(y, d))); return V.len(v) > 1e-4 ? V.norm(v) : null; };
+  const pa = flat(M3.apply(o.R0, [0, 1, 0])), pb = flat(M3.apply(F, [0, 1, 0])), th = pa && pb ? Math.atan2(V.dot(d, V.cross(pa, pb)), V.dot(pa, pb)) : 0;
+  // (0.6 a second, slower for a big roll: at most about 50 degrees a second, smooth's steepest slope being 1.5)
+  const rate = Math.min(0.6, 0.58/Math.max(Math.abs(th), 1e-3));
+  // (after a gap the aim kept for the way back belongs to another visit: forget it, or a new angle opened on the old one's aim; Codex)
+  if (!(dt < 0.25)) o.riseOff = null;
+  if (!byHand || !(dt < 0.25)) o.riseW = 0;
+  else {
+    // (out: it follows the distance the camera has reached; in: it heads for where the wheel sent it, and the camera waits for it
+    // (distFloor), so the point it circles and its roll come back as smoothly as they went. Two of Codex's reviews: first the camera went
+    // through the ground scrolling back in, then a cap on how far over it could be, worked out from the distance, undid tens of degrees of
+    // roll in one tick)
+    const to = riseK(a, Math.min(orbit.dist, orbit.distT)), v = o.riseW || 0; o.riseW = v + clamp(to - v, -dt*rate, dt*rate);
+    if (o.riseW > 0){ distFloor.d = a*KM*Math.pow(4, o.riseW); distFloor.at = GT; }
+  }
+  const w = smooth(0, 1, o.riseW);
+  if (!(o.riseW > 0)){ if (o.riseOff){ orbit.off = M3.apply(o.R0, o.riseOff); o.riseOff = null; } return false; }
+  // (the aim the camera had at the place, kept in the place's frame for the way back)
+  if (!o.riseOff){ o.riseOff = M3.applyT(o.R0, orbit.off); orbit.offFn = null; }
+  if (w >= 1){
+    const n = M3.applyT(F, d); o.riseOff = null; o.riseW = 0;
+    cam.focus = body.index; orbit.lock = body.index; orbit.frame = F; orbit.off = [0, 0, 0]; orbit.offFn = null;
+    orbit.yaw = Math.atan2(n[0], n[2]); orbit.pitch = Math.asin(clamp(n[1], -0.999, 0.999));
+    if (typeof setInfo === 'function' && infoObj === o.index) setInfo(body.index);
+    if (typeof updateModeUI === 'function') updateModeUI();
+    return true;
+  }
+  // (o.offset: the place from its body's middle)
+  orbit.off = V.add(V.mul(M3.apply(o.R0, o.riseOff), 1 - w), V.mul(o.offset, -w));
+  orbit.frame = M3.mul(turnAbout(d, th*w), o.R0);
+  return true;
 }
 // (a globe: how far to turn it for a pixel, so the ground under the middle of the view moves with the mouse; never faster than before)
 const grabK = S => Math.min(0.005, 2*tanY/viewHcss*Math.max(orbit.dist - S.R, S.R*1e-4)/S.R);
@@ -702,7 +756,7 @@ function endPointer(e){
   pointers.delete(e.pointerId);
   // one finger of two lifted: the other one does nothing until it lifts too (it used to turn the pinch into a sudden orbit)
   if (pointers.size === 1 && drag) drag.dead = true;
-  if (pointers.size === 0){ canvas.classList.remove('dragging'); if (wasTap && Math.abs(drag.t0 - wakeTapAt) > 150) tapAt(e.clientX, e.clientY); drag = null; }
+  if (pointers.size === 0){ canvas.classList.remove('dragging'); document.body.classList.remove('view-drag'); if (wasTap && Math.abs(drag.t0 - wakeTapAt) > 150) tapAt(e.clientX, e.clientY); drag = null; }
 }
 // a tap picks what is under it; a double-tap on the sky brings the object on the leash back to the middle
 function tapAt(x, y){
@@ -726,7 +780,10 @@ function onWheel(e){ e.preventDefault();
   zoomBy(f);
   // (near a surface the zoom goes toward the cursor: the part of the way the zoom covers, eased with it)
   if (S){ const c = projectCSS(V.add(OBJ[orbit.lock].rel, S.kind === 'ground' ? orbit.off : [0, 0, 0])) || { x:viewWcss/2, y:canvasHcss/2 };
-    const t = 1 - f; gPend.x += (e.clientX - c.x)*t; gPend.y += (e.clientY - c.y)*t; } }
+    // (scrolling out of a place on Earth goes straight up from it: the pull away from the cursor moved the place, km a pixel from high up,
+    // and a few notches carried it across a continent; scrolling in still goes toward the cursor)
+    const t = f > 1 && S.kind === 'ground' ? 0 : 1 - f;
+    if (!S.far){ gPend.x += (e.clientX - c.x)*t; gPend.y += (e.clientY - c.y)*t; } } }
 // the famous place on Earth nearest the cursor (within 1,500 km of the ground under it): fly down to it. False if the cursor is off the Earth
 let snapAt = -1e9;
 function snapToPlace(cx, cy){

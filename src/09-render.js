@@ -107,7 +107,7 @@ function drawParticles(o, s, vis = 1){
   gl.uniformMatrix3fv(pr.u.uCamRot, false, camRot); gl.uniform2f(pr.u.uTan, tanX, tanY);
   gl.uniform3fv(pr.u.uRel, rel); gl.uniformMatrix3fv(pr.u.uRot, false, s.rot ? s.rot() : (o ? o.rot : I3)); gl.uniform1f(pr.u.uRad, rad);
   gl.uniform1f(pr.u.uPixAng, 2*tanY/sceneH); gl.uniform1f(pr.u.uMode, s.mode); gl.uniform1f(pr.u.uN, s.ps.count);
-  gl.uniform1f(pr.u.uSB, s.mode === 1 || s.mode === 2 ? s.sb*rad*rad : s.sb); gl.uniform1f(pr.u.uSize, s.size); gl.uniform1f(pr.u.uCap, s.cap || 2);
+  gl.uniform1f(pr.u.uSB, s.mode === 1 || s.mode === 2 ? s.sb*rad*rad : s.mode === 4 ? s.sb*rad : s.sb); gl.uniform1f(pr.u.uSize, s.size); gl.uniform1f(pr.u.uCap, s.cap || 2);
   gl.uniform1f(pr.u.uOut, OUT); gl.uniform1f(pr.u.uT, o ? o.t : 0); gl.uniform1f(pr.u.uVis, vis*(s.vis ? s.vis() : 1));
   if (s.q0) gl.uniform4fv(pr.u.uQ0, s.q0());
   if (s.q1) gl.uniform4fv(pr.u.uQ1, s.q1());
@@ -316,14 +316,50 @@ function projectCSS(rel){
   return { x:(x*0.5 + 0.5)*viewWcss, y:canvasHcss - (y*0.5 + 0.5)*viewHcss, z };
 }
 function toast(msg){ const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('on'), 2600); }
-function hideHint(){ if (hintHidden) return; hintHidden = true; $('#hint').style.opacity = '0'; }
+// The first-visit hint, a small card since 0.27.3 (owner's pick): shown until the first thing the visitor does, a press of the mouse or a
+// finger anywhere, a turn of the wheel or a key (the listener below takes it away itself, so opening the atlas, the tours or the settings
+// counts as much as a drag: from the Codex review of PR 66), then never again on this device (gcdatlas.hinted). Until then it stays: it
+// used to go after 18 s whether or not anyone had read it. Not counted: a key that only modifies, and an input that arrives while the
+// interface is faded (on a touch screen that tap only wakes it, and the card comes back with it). A call that no input came before (a share
+// link opening its place, a tour starting by itself) leaves it up; the showcase, the lab and the songs page take it away without
+// remembering (scripted).
+const hintEl = $('#hint'); let hintActed = false;
+try { hintHidden = localStorage.getItem('gcdatlas.hinted') === '1'; } catch (e) {}
+if (!hintHidden) hintEl.hidden = false;
+for (const ev of ['pointerdown', 'keydown', 'wheel', 'touchstart']) addEventListener(ev, e => {
+  if (hintHidden || (ev === 'keydown' && /^(Shift|Control|Alt|Meta|CapsLock)$/.test(e.key)) || document.body.classList.contains('ui-idle')) return;
+  hintActed = true; hideHint();
+}, { capture:true, passive:true });
+function hideHint(scripted){
+  if (hintHidden || !(scripted || hintActed)) return;
+  hintHidden = true; hintEl.classList.add('off'); setTimeout(() => { hintEl.hidden = true; }, 900);
+  if (!scripted) try { localStorage.setItem('gcdatlas.hinted', '1'); } catch (e) {}
+}
 const distFromEarth = o => o.distEarth || fmtDist(V.len(V.sub(o.pos, earth.pos))) + ' from Earth';
 const readoutEl = $('#readout'); let roLast = '';
-function setReadout(t){
-  // the numbers wrap inside the panel, the same width as the fact above them
-  if (t === roLast) return; roLast = t;
-  readoutEl.textContent = t;
+// the numbers under the fact, a row a line (0.28.3, owner: Earth's six live lines in one colour were "way too cluttered, long, and hard to
+// read"). The words before a line's colon and the dots between its parts are grey; lines that say where an image or a map comes from go
+// last, smaller (RO_CREDIT). More than three lines show the first two and a button for the rest, remembered (SET.roAll). The rows are
+// separated by line breaks in the text, so the element's textContent still reads line by line.
+const RO_CREDIT = /^(ground|clouds|images?|photos?|maps?|terrain|heights)\b[^:]{0,30}:/i;
+const RO_SHORT = 2;
+function roRow(line, cls){
+  const d = document.createElement('div'); d.className = cls ? 'ro-l ' + cls : 'ro-l';
+  const m = /^([a-z][^:·]{0,38}): (.+)$/.exec(line);
+  if (m){ const k = document.createElement('span'); k.className = 'ro-k'; k.textContent = m[1] + ': '; d.appendChild(k); line = m[2]; }
+  line.split(' · ').forEach((part, i) => { if (i){ const s = document.createElement('span'); s.className = 'ro-s'; s.textContent = ' · '; d.appendChild(s); } d.appendChild(document.createTextNode(part)); });
+  return d;
 }
+function setReadout(t){
+  if (t === roLast) return; roLast = t;
+  const all = String(t || '').split('\n').filter(s => s.trim()), main = all.filter(s => !RO_CREDIT.test(s)), cred = all.filter(s => RO_CREDIT.test(s));
+  const fold = all.length > RO_SHORT + 1, open = !fold || SET.roAll, rows = open ? [...main.map(s => [s, '']), ...cred.map(s => [s, 'ro-c'])] : main.slice(0, RO_SHORT).map(s => [s, '']);
+  readoutEl.textContent = '';
+  rows.forEach(([s, c], i) => { if (i) readoutEl.appendChild(document.createTextNode('\n')); readoutEl.appendChild(roRow(s, c)); });
+  if (fold){ const b = document.createElement('button'); b.type = 'button'; b.className = 'ro-more'; b.setAttribute('aria-expanded', String(!!SET.roAll));
+    b.textContent = SET.roAll ? 'less ▴' : `${all.length - RO_SHORT} more ▾`; readoutEl.appendChild(document.createTextNode('\n')); readoutEl.appendChild(b); }
+}
+readoutEl.addEventListener('click', e => { if (!e.target.closest('.ro-more')) return; SET.roAll = !SET.roAll; saveSet(); const t = roLast; roLast = null; setReadout(t); });
 // the Halo tour shows the place, not the ship (owner, 0.9.9): while it plays and the camera is with the ship (riding along, or locked on it
 // after a drag), the panel shows the place the ship visits or is going to (htPlace, 09t-halotour.js), with a blue line over the name saying
 // what the ship is doing. Not during a flight to somewhere else (the tour ends when it lands).
@@ -471,6 +507,27 @@ const earthMarks = FLAGS.realEarth ? EPL.ALL_PICKS.map(r => {
   return { el, row:r, u:[Math.cos(r[2]*DEG)*Math.cos(r[3]*DEG), Math.sin(r[2]*DEG), -Math.cos(r[2]*DEG)*Math.sin(r[3]*DEG)],
     pri:city3d ? 3 : k === 'C' || k === 'c' ? 1.2 + Math.log10(r[4])*0.1 : k === 'm' ? 1 + r[4]/9000 : 0.8, min:city3d ? 110 : k === 'C' || k === 'c' ? 135 : 230 };
 }) : [];
+// the places on the Moon (0.27.0, m4-moon-places.js), marked on its globe the same way once it is big on the screen; a click flies down to one
+const moonMarks = MPL.places.map(p => {
+  const el = document.createElement('button'); el.className = 'lab emark e3d'; el.tabIndex = -1;
+  el.textContent = p.name; el.title = 'Fly down to ' + p.name;
+  el.addEventListener('click', () => { hideHint(); lockOn(p.obj.index); });
+  $('#labels').appendChild(el);
+  return { el, u:p.u, pri:3, min:110 };
+});
+// A label's width is kept (0.27.2): with Earth's marks on screen the widths were read from the page a dozen times a frame, each read between
+// two moves. It is measured again when the label's words change, when the window or the fonts do (LABV), and every 2 s in any case, which
+// covers a new text size.
+let LABV = 1, labT = 0;
+function labW(el){
+  const t = el.textContent;
+  if (el._wv !== LABV || el._wt !== t){ const w = el.offsetWidth; if (!w) return 80; el._wv = LABV; el._wt = t; el._w = w; }
+  return el._w;
+}
+// words that are written again and again (the ruler, the clock, the tour's count) only reach the page when they have changed
+function setTxt(el, t){ if (el.textContent !== t) el.textContent = t; }
+addEventListener('resize', () => { LABV++; });
+if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', () => { LABV++; });
 function updateLabels(){
   if (WALLPAPER) return;
   const focus = tour.on ? tour.obj : orbit.lock;
@@ -514,6 +571,17 @@ function updateLabels(){
       cand.push({ i:-2, el:m.el, pr, rpx:2, pri:m.pri, earthMark:true });
     }
   }
+  moonMarks.forEach(m => { m.el._show = false; });
+  if (labelsOn && moonMarks.length && !SKYV.on && moon.rpx > 110 && !moon.hidden && !cmp && !(MENV.on && MENV.fade > 0.5)){
+    const RMk = MDT.R*KM;
+    for (const m of moonMarks){
+      if (m.min > moon.rpx) continue;
+      const nw = M3.apply(moon.rot, m.u), rel = V.add(moon.rel, V.mul(nw, RMk));
+      if (V.dot(nw, rel) > -0.12*V.len(rel)) continue;   // (on the far side, or too near the edge of the disc)
+      const pr = projectCSS(rel); if (!pr) continue;
+      cand.push({ i:-2, el:m.el, pr, rpx:2, pri:m.pri, earthMark:true });
+    }
+  }
   // labels hide behind planets, stars and black holes that stand in front of them
   const occ = [];
   for (const o of OBJ){
@@ -534,9 +602,12 @@ function updateLabels(){
     return Math.hypot(nx - fd.x, ny - fd.y) < fd.r*0.95;
   };
   cand.sort((a, b) => b.pri - a.pri);
+  // every width is read before any label is moved (labW): a width read right after a move made the browser work out styles again each time
+  const lt = performance.now(); if (lt - labT > 2000){ labT = lt; LABV++; }
+  for (const c of cand) c.w = labW(c.el);
   for (const c of cand){
     if (occ.length && hidden(c)) continue;
-    const w = c.el.offsetWidth || 80, h = 16, off = Math.max(c.rpx*0.72, 5);
+    const w = c.w, h = 16, off = Math.max(c.rpx*0.72, 5);
     const lx = Math.min(c.pr.x + off, innerWidth - w - 8), ly = c.pr.y - off - 16;
     if (avoid.some(r => lx < r.right + 6 && lx + w > r.left - 6 && ly < r.bottom + 4 && ly + h > r.top - 4)) continue;
     if (overFocus(c, lx, ly, w, h)) continue;
@@ -549,6 +620,7 @@ function updateLabels(){
   for (const el of labelEls) if (el.classList.contains('on') !== el._show) el.classList.toggle('on', el._show);
   for (const el of starEls) if (el.classList.contains('on') !== el._show) el.classList.toggle('on', el._show);
   for (const m of earthMarks) if (m.el.classList.contains('on') !== m.el._show) m.el.classList.toggle('on', m.el._show);
+  for (const m of moonMarks) if (m.el.classList.contains('on') !== m.el._show) m.el.classList.toggle('on', m.el._show);
 }
 
 function updateHUD(dt){
@@ -618,7 +690,7 @@ function updateScale(){
   const [val, unit] = lenUnit(km);
   const p = Math.pow(10, Math.floor(Math.log10(val))), m = val/p, nice = (m >= 5 ? 5 : m >= 2 ? 2 : 1)*p;
   scaleBar.style.width = (targetPx*nice/val).toFixed(0) + 'px';
-  scaleTxt.textContent = '= ' + fmtNum(nice) + ' ' + (nice === 1 && unit === 'light-years' ? 'light-year' : unit);
+  setTxt(scaleTxt, '= ' + fmtNum(nice) + ' ' + (nice === 1 && unit === 'light-years' ? 'light-year' : unit));
 }
 
 // ---------------------------------------------------------------- scale ladder (right edge): powers of ten from the Moon to the observable universe
@@ -628,7 +700,7 @@ const LADDER = [
   ['Sgr A* black hole', 'sgra', 2e-5], ['Betelgeuse', 'betelgeuse', 2e-4], ['Solar System', 'solarsystem', 1.6e-3],
   ['M87* black hole', 'm87bh', 2e-2], ['TON 618 black hole', 'ton618', 0.3], ['Oort cloud', 'oort', 3], ['Pillars of Creation', 'pillars', 12],
   ['Omega Centauri', 'omegacen', 250], ['Galactic Centre', 'galcentre', 1500], ['Magellanic Clouds', 'lmc', 5e4], ['Milky Way', 'milkyway', 2.5e5],
-  ['Andromeda', 'andromeda', 9e5], ['Local Group', 'milkyway', 1.2e7], ['Virgo Cluster', 'm87', 6e7], ['Laniakea', 'cosmicweb', 5e8],
+  ['Andromeda', 'andromeda', 9e5], ['Local Group', 'milkyway', 1.2e7], ['Virgo Cluster', 'virgocluster', 6e7], ['Laniakea', 'cosmicweb', 5e8],
   ['cosmic web', 'cosmicweb', 3e9], ['observable universe', 'universe', 1.3e11],
 ].filter(([, k]) => BYKEY[k]).map(([name, key, d]) => ({ name, key, d }));
 const LAD_LO = -9.6, LAD_HI = 11.4;
@@ -738,7 +810,7 @@ function updateTourTrack(){
     : (Math.max(L.indexOf(tour.view), 0) + clamp(tour.t/holdOf(o.views[tour.view]), 0, 1))/L.length;
   const f = (k + sub*0.999)/Math.max(n - 1, 1);
   ttFill.style.height = (clamp(f, 0, 1)*100).toFixed(2) + '%';
-  $('#ladCap').textContent = `tour ${k + 1} / ${n}`;
+  setTxt($('#ladCap'), `tour ${k + 1} / ${n}`);
   // with many stops only some names fit: always the current one, its neighbours, the ends, and an even spread
   const H = ladderEl.getBoundingClientRect().height, gap = H/Math.max(n - 1, 1), every = Math.max(1, Math.ceil(17/Math.max(gap, 1)));
   const th = Math.min(28, gap).toFixed(1) + 'px'; if (tourTrack.style.getPropertyValue('--tt-h') !== th) tourTrack.style.setProperty('--tt-h', th);   // (see syncTickSizes)
@@ -856,6 +928,7 @@ function setOpt(key, v, quiet){
     case 'labels': SET.labels = labelsOn = !!v; break;
     case 'twinkle': SET.twinkle = !!v; break;
     case 'launchReal': SET.launchReal = !!v; break;
+    case 'quakes': SET.quakes = !!v; SET.quakesPick = true; if (!quiet) toast(v ? "earthquakes and fires on · this week's quakes (USGS) and the last day's fires (NASA FIRMS) on the real Earth" : 'earthquakes and fires off'); break;
     case 'haloMark': SET.haloMark = !!v; if (!quiet) toast(v ? 'Halo indicator on · the ship is marked in blue (ride along from its card)' : 'Halo indicator off'); updateModeUI(); break;
     case 'sound': SET.sound = !!v; music.set(SET.sound); if (!quiet) toast(v ? 'music on' : 'music off'); break;
     case 'volume': SET.volume = clamp(+v, 0, 1); music.volume(); break;
@@ -872,8 +945,14 @@ function setOpt(key, v, quiet){
 const cycle = (list, cur) => list[(list.indexOf(cur) + 1) % list.length];
 let toggleSettings = on => { settingsEl.hidden = !on; $('#btnSettings').setAttribute('aria-expanded', String(on)); if (on) syncSettingsUI(); };
 document.querySelectorAll('.seg[data-key] button').forEach(b => b.addEventListener('click', () => setOpt(b.parentElement.dataset.key, b.dataset.v)));
-function applyTextSize(){ const r = document.documentElement.style; r.setProperty('--ts', String(SET.textSize)); r.setProperty('--tsm', String(+(SET.textSize*SET.menuSize).toFixed(3))); roLast = ''; if (!atlasEl.hidden){ fitAtlas(); fitSeenBar(); } }
+// (big screens, 1440 x 860 or more, read every text 10% bigger than the settings say: owner's pick, 2026-11-11. At 1440 x 900 54 of 58 texts
+// were under 12 px. Not below that: at 1280 px the desk's top bar would wrap)
+const bigText = () => !isCompact() && innerWidth >= 1440 && innerHeight >= 860;
+let bigTextOn = null;
+function applyTextSize(){ const r = document.documentElement.style, k = (bigTextOn = bigText()) ? 1.1 : 1; document.documentElement.classList.toggle('txt-big', bigTextOn);
+  r.setProperty('--ts', String(+(SET.textSize*k).toFixed(3))); r.setProperty('--tsm', String(+(SET.textSize*SET.menuSize*k).toFixed(3))); roLast = ''; if (!atlasEl.hidden){ fitAtlas(); fitSeenBar(); } }
 applyTextSize();
+addEventListener('resize', () => { if (bigText() !== bigTextOn){ applyTextSize(); requestAnimationFrame(() => typeof fitTopSearch === 'function' && fitTopSearch()); } });
 $('#textSize').addEventListener('input', e => { setOpt('textSize', e.target.value, true); });
 $('#menuSize').addEventListener('input', e => { setOpt('menuSize', e.target.value, true); });
 settingsEl.querySelectorAll('.tog button').forEach(b => b.addEventListener('click', () => setOpt(b.dataset.key, !SET[b.dataset.key])));
@@ -1007,7 +1086,11 @@ function earthFill(q){
 // (the names arrive after the first letters are typed: the search runs again)
 EPL.onLoad.push(() => { if (searchEl.value || atlasSearch.value) filterAtlas(searchEl.value || atlasSearch.value, true); });
 const atlasEmpty = document.createElement('div'); atlasEmpty.className = 'atlas-empty'; atlasEmpty.innerHTML = '<div></div><button type="button"></button>';
-const atlasEnd = Object.assign(document.createElement('div'), { className:'aend', textContent:'real positions and sizes' });
+// the line under the last row, with the link to /places, every place as a page (0.25.1): in the page's own HTML (src/01-body.html), so a
+// crawler that cannot run this script finds it too. Served alone (the artifact build, or dist/index.html opened as a file) there is no
+// /places beside the page: the link goes to the site's
+const atlasEnd = $('#atlasEnd');
+if (!window.__SHARE_PAGES || !/^https?:$/.test(location.protocol)) atlasEnd.querySelector('a').href = 'https://gcdatlas.com/places';
 
 // the controls
 const toolsEl = $('#atlasTools'), sortBtns = [...document.querySelectorAll('#atlasSort [data-sort]')], dirBtn = $('#atlasDir'), allBtn = $('#atlasAll'), unseenBtn = $('#atlasUnseen'), catGrid = $('#atlasCats');
@@ -1094,6 +1177,7 @@ const rowDist = r => r.dfix || fmtDist(earthDist(r.o));
 // grouped under the headings, the Solar System and the comets are measured from the Sun, and a moon from its planet
 function rowSun(r){
   const k = r.o.key;
+  if (r.par && r.o.surfOf) return 'on ' + r.par.o.name;   // (a place on a body's surface, 0.27.0: the places on the Moon)
   if (r.par) return fmtDist(V.len(V.sub(r.o.pos, r.par.o.pos))) + ' from ' + r.par.o.name.replace(/^the /, '');
   if (k === 'sun') return 'centre';
   if (/ from the Sun$/.test(r.o.distEarth || '')) return r.o.distEarth.replace(/ from the Sun$/, '');   // (the Oort cloud: 2,000 to 100,000 AU)
@@ -1113,8 +1197,13 @@ function sectionRows(rows, fromSun){
   const moonD = r => V.len(V.sub(r.o.pos, r.par.o.pos));
   const top = rows.filter(r => !r.par || lone(r)), ks = new Map(top.map(r => [r, key(lone(r) || r)])), out = [];
   top.sort((a, b) => (lone(a) && lone(a) === lone(b) ? moonD(a) - moonD(b) : near(ks.get(a), ks.get(b), a, b))*ATL.dir);
-  top.forEach(r => { out.push(r); r.branch = false; const kids = rows.filter(q => q.par === r), kd = new Map(kids.map(q => [q, moonD(q)]));
-    kids.sort((a, b) => (kd.get(a) - kd.get(b))*ATL.dir); kids.forEach(q => { q.branch = true; }); out.push(...kids); });
+  // (a row's own rows under it, and theirs under them: the places on the Moon, 0.27.0, sit under the Moon, which sits under Earth; places on
+  // a surface come first, in their own order)
+  const add = (r, depth) => { out.push(r); r.branch = depth > 0; r.deep = depth > 1;
+    const kids = rows.filter(q => q.par === r), kd = new Map(kids.map(q => [q, moonD(q)]));
+    kids.sort((a, b) => (a.o.surfOf && b.o.surfOf ? (a.o.sortKey ?? 0) - (b.o.sortKey ?? 0) : a.o.surfOf ? -1 : b.o.surfOf ? 1 : kd.get(a) - kd.get(b))*ATL.dir);
+    kids.forEach(q => add(q, depth + 1)); };
+  top.forEach(r => add(r, 0));
   return out;
 }
 function flatRows(){
@@ -1223,7 +1312,7 @@ function filterAtlas(q, keep){
   // (places on Earth go first when no name in the atlas starts with the words typed: "paris" lists Paris before anything with "paris" in its notes)
   if (earthFill(q) && !t.codes.length){ const starts = r => !r.b.hidden && (r.o.name.toLowerCase().replace(/^the /, '').startsWith(q) || (r.o.label || '').toLowerCase().startsWith(q));
     if (!atlasRows.some(starts)){ atlasList.prepend(earthHead, ...earthRows.map(r => r.b)); atlasMoved = true; } }
-  atlasRows.forEach(r => r.b.classList.toggle('child', r.branch && !r.par.b.hidden));
+  atlasRows.forEach(r => { const c = r.branch && !r.par.b.hidden; r.b.classList.toggle('child', c); r.b.classList.toggle('grand', c && !!r.deep); });
   atlasList.querySelectorAll('.agroup').forEach(h => { let x = h.nextElementSibling, any = false; while (x && !x.classList.contains('agroup')){ if (x.classList.contains('arow') && !x.hidden) any = true; x = x.nextElementSibling; } h.hidden = !any; });
   atlasCountNow(q);
   setKb(q ? Math.max(0, visibleRows().findIndex(r => !r.rank)) : -1);
@@ -1497,13 +1586,25 @@ function autoDetail(){
     AUTO_D.up = runTime > 3 && ema < 19 && LODK >= 1 ? AUTO_D.up + 1 : 0;
     if (AUTO_D.up >= 4){ AUTO_D.up = 0; AUTO_D.tries++; detailIdx = 0; runTime = 0; ema = 16; calmT = 0; resize(); syncSettingsUI(); }
   } else if (detailIdx === 0){
-    AUTO_D.slow = ema > 24 ? AUTO_D.slow + 1 : 0;
+    AUTO_D.slow = ema > 24 && !cpuBound() ? AUTO_D.slow + 1 : 0;   // (slow because of the processor: fine would be no faster than ultra)
     if (AUTO_D.slow >= 3){
       AUTO_D.slow = 0; detailIdx = 1; runTime = 0; ema = 20; calmT = 0; resize(); syncSettingsUI();
       if (AUTO_D.tries >= 2){ AUTO_D.off = true; try { localStorage.setItem('gcdatlas.autoDetail', JSON.stringify({ fine:Date.now() })); } catch (e) {} }
     }
   }
 }
+// What holds the frame rate down, the processor or the graphics card (0.27.2)? `busy` is how long the main thread works on a frame: from the
+// start of frame() to the first task after the browser has drawn it, so the page's script, its styles, layout and painting all count. When
+// that is most of the time between two frames (cpuBound), fewer ray-march steps or bigger characters cannot help, they only make the picture
+// worse: with the processor slowed six times on a fast graphics card the page went down to bold characters and stayed at 19 frames a second.
+// So detail is only lowered while the graphics card is what the frames wait for. The two work side by side, so the time between frames is
+// about the longer of the two: a slow processor gives a share of 0.86 to 0.99, slow graphics 0.01 to 0.14 (measured with Chrome's processor
+// slow-down and with software graphics). The line is at 0.8: below it the graphics card still has something to give.
+let busy = 4, busyT0 = 0;
+const busyCh = typeof MessageChannel !== 'undefined' ? new MessageChannel() : null;
+// (a frame that compiled a shader says nothing, as for `ema`)
+if (busyCh) busyCh.port1.onmessage = () => { if (busyT0){ if (!progBusy) busy = busy*0.95 + Math.min(performance.now() - busyT0, 250)*0.05; busyT0 = 0; } };
+function cpuBound(){ return busy > ema*0.8; }
 addEventListener('resize', () => { if (resizePending) return; resizePending = true; requestAnimationFrame(() => { resizePending = false; resize(); ladTitles(); }); });
 // when zooming out from inside the galaxy, rise gently above the disk so the Milky Way unfolds instead of staying edge-on
 function riseAboveDisk(dt){
@@ -1564,7 +1665,7 @@ function startTour(id){
   tour.on = true; tourGo(TOUR[0]); updateModeUI();
   toast(tourName() + ' · ' + TOUR.length + ' stops');
 }
-const capEl = $('#caption'), capText = $('#capText'), capBtn = $('#capBtn');
+const capEl = $('#caption'), capText = $('#capText'), capBtn = $('#capBtn'), capX = $('#capX');
 let capFull = '', capShown = 0, capT = 0;
 // (while the interface has faded away the caption fades too, a few seconds after it is written out, and comes back only for a new one:
 // owner, 0.10.1. A caption is new when more than its numbers change, so a launch clock ticking on does not bring it back)
@@ -1582,15 +1683,27 @@ function setCaption(txt, btn){
   const key = txt.replace(/[0-9]+/g, '#'); if (key !== capKey){ const had = new Set(capKey.split(/\s+/)); if (!txt || key.split(/\s+/).some(w => !had.has(w))){ capDoneAt = 0; capEl.classList.remove('rest'); } capKey = key; }
   capEl.hidden = !txt; capBtn.hidden = !btn; if (btn) capBtn.textContent = btn;
 }
+// launch notices (a launch or replay you are not watching, LCAP.run; owner, 2026-11-11: "very distracting and annoying that you cant get rid
+// of it or it doesnt go away on its own"): each is shown NOTE_T, then fades over 1.2 s and is not shown again; its x hides them all for the
+// rest of the visit. Watching a launch, its caption stays (it says what is happening)
+const NOTE = { run:null, at:0, gone:new WeakSet(), off:false }, NOTE_T = 10000;
+function noteOk(r, now){
+  if (NOTE.off || NOTE.gone.has(r)) return false;
+  if (NOTE.run !== r){ NOTE.run = r; NOTE.at = now; }
+  if (now - NOTE.at > NOTE_T + 1200){ NOTE.gone.add(r); return false; }
+  return true;
+}
 function updateCaption(dt){
   if (WALLPAPER) return;
-  let txt = '', btn = '';
+  let txt = '', btn = '', note = false;
+  const nowC = performance.now(), nr = !LCAM.on && LCAP.txt ? LCAP.run : null, nOk = nr ? noteOk(nr, nowC) : true;
   if (cmp) { txt = cmpText(); btn = 'end compare'; }
-  else if (LCAP.live){ txt = LCAP.txt; btn = LCAP.btn; }   // (a real launch happening now, even on a tour)
+  else if (LCAP.live && nOk){ txt = LCAP.txt; btn = LCAP.btn; note = !!nr; }   // (a real launch happening now, even on a tour)
   else if (tour.on && tour.phase !== 'fly' && TOUR_CAP[tour.obj]) txt = TOUR_CAP[tour.obj];
   else if (SHOWCAP.txt) txt = SHOWCAP.txt;
-  else if (LCAP.txt){ txt = LCAP.txt; btn = LCAP.btn; }
+  else if (LCAP.txt && nOk){ txt = LCAP.txt; btn = LCAP.btn; note = !!nr; }
   setCaption(txt, btn);
+  capX.hidden = !note; capEl.classList.toggle('going', note && nowC - NOTE.at > NOTE_T);
   if (capFull && capShown < capFull.length){
     capT += dt*(reduceMotion ? 1e4 : 55); const k = Math.min(capFull.length, Math.floor(capT));
     if (k !== capShown){ capShown = k; capText.textContent = capFull.slice(0, k); if (k >= capFull.length) capEl.classList.add('done'); }
@@ -1601,6 +1714,7 @@ function updateCaption(dt){
   capEl.classList.toggle('rest', !!capDoneAt && now - capDoneAt > CAP_REST && document.body.classList.contains('ui-idle'));
 }
 capBtn.addEventListener('click', () => { if (cmp) endCompare(true); else if (LCAP.go) LCAP.go(); });
+capX.addEventListener('click', () => { NOTE.off = true; capX.hidden = true; capEl.hidden = true; });
 
 // ---------------------------------------------------------------- size compare: put a second object beside this one, at true scale
 let cmp = null, cmpPick = false, cmpA = -1;
@@ -1670,13 +1784,13 @@ function setDeep(kyr){
 function syncTimeUI(){
   if (WALLPAPER) return;
   const jd = jdNow(), off = jd - realJD();
-  tmDate.textContent = fmtJD(jd);
-  tmSub.textContent = Math.abs(off) < 0.02 ? 'the Solar System as it is right now' : (off > 0 ? 'the Solar System ' + fmtSpan(off) + ' from now' : 'the Solar System ' + fmtSpan(-off) + ' ago');
+  setTxt(tmDate, fmtJD(jd));
+  setTxt(tmSub, Math.abs(off) < 0.02 ? 'the Solar System as it is right now' : (off > 0 ? 'the Solar System ' + fmtSpan(off) + ' from now' : 'the Solar System ' + fmtSpan(-off) + ' ago'));
   const yrs = Math.round(Math.abs(DEEP)*1e6).toLocaleString('en-US');
   const dt = DEEP ? 'the stars ' + yrs + ' years ' + (DEEP > 0 ? 'from now' : 'ago') : "today's sky"; if (deepTxt.textContent !== dt) deepTxt.textContent = dt;
-  $('#timem').querySelectorAll('.seg[data-key="ssrate"] button').forEach(b => b.setAttribute('aria-checked', String(Math.abs(+b.dataset.v - ssRate) < 1e-4)));
+  $('#timem').querySelectorAll('.seg[data-key="ssrate"] button').forEach(b => { const v = String(Math.abs(+b.dataset.v - ssRate) < 1e-4); if (b.getAttribute('aria-checked') !== v) b.setAttribute('aria-checked', v); });
   const badge = DEEP ? 'stars ' + (DEEP > 0 ? '+' : '-') + yrs + ' yr' : (Math.abs(off) > 1 ? fmtJD(jd).slice(0, 10) : '');
-  tbadge.hidden = !badge; if (badge) tbadge.textContent = badge;
+  if (tbadge.hidden !== !badge) tbadge.hidden = !badge; if (badge) setTxt(tbadge, badge);
 }
 function fmtSpan(days){ return days < 1 ? Math.round(days*24) + ' hours' : days < 60 ? Math.round(days) + ' days' : days < 730 ? Math.round(days/30.44) + ' months' : Math.round(days/365.25).toLocaleString('en-US') + ' years'; }
 $('#timem').querySelectorAll('.seg[data-key="ssrate"] button').forEach(b => b.addEventListener('click', () => { ssRate = +b.dataset.v; if (!timeScale) setOpt('time', 1, true); syncTimeUI(); }));
@@ -1763,6 +1877,7 @@ function tick(dt){
     dealAhead();   // (a random tour dealt ahead, a bit each frame: the next one on its last stop, or a first one while the list of tours is open)
     updateKeys(dt);
     if (!tween) orbit.dist = Math.exp(Math.log(orbit.dist) + (Math.log(orbit.distT) - Math.log(orbit.dist))*(1 - Math.exp(-dt*7)));
+    if (distFloor.at === GT && orbit.dist < distFloor.d) orbit.dist = distFloor.d;   // (on the way back in from a place's body: riseTo, 08-camera.js)
     riseAboveDisk(dt);
     // locked on the Halo, the orbit frame turns with the ship, so the camera keeps trailing it as it steers
     if (orbit.lock >= 0 && orbit.lock === ship.index) orbit.frame = camFrameOf(ship);
@@ -1834,6 +1949,7 @@ function frame(now){
   }
   const dtR = Math.min((now - last)/1000, 0.25); last = now;
   const hitch = progBusy > 0; progBusy = 0;   // the last frame compiled a shader: its time says nothing about how fast the scene draws
+  if (busyCh && !busyT0){ busyT0 = performance.now(); busyCh.port2.postMessage(0); }
   const dt = Math.min(dtR, 0.05);
   tick(dt);
   render();
@@ -1848,9 +1964,11 @@ function frame(now){
   lodT += dtR;
   if (!window.__noAdapt && lodT > 1 && document.visibilityState === 'visible'){
     lodT = 0;
-    if (ema > 38) LODK = Math.max(0.5, LODK - 0.1); else if (ema < 24) LODK = Math.min(1, LODK + 0.05);
+    // (not while the processor is what the frames wait for, cpuBound: the steps then go back up, and the characters stay)
+    const cpu = cpuBound();
+    if (ema > 38 && !cpu) LODK = Math.max(0.5, LODK - 0.1); else if (ema < 24 || cpu) LODK = Math.min(1, LODK + 0.05);
     autoDetail();
-    if (runTime > 10 && ema > 48 && LODK <= 0.5 && adaptCount < 2 && detailIdx < DETAIL.length - 1){
+    if (runTime > 10 && ema > 48 && LODK <= 0.5 && !cpu && adaptCount < 2 && detailIdx < DETAIL.length - 1){
       adaptCount++; runTime = 0; ema = 20; calmT = 0; detailIdx++; resize(); toast('detail lowered to ' + DETAIL[detailIdx].name + ' for smoother motion');
     }
     calmT = detailIdx > SET.detail && ema < 20 && LODK >= 1 ? calmT + 1 : 0;
@@ -1858,7 +1976,6 @@ function frame(now){
       raised++; calmT = 0; runTime = 0; ema = 20; adaptCount = Math.max(0, adaptCount - 1); detailIdx--; resize(); toast('detail back to ' + DETAIL[detailIdx].name);
     }
   }
-  if (!hintHidden && performance.now() > 18000) hideHint();
   queueNextFrame();
 }
 resize();
@@ -1866,13 +1983,15 @@ ladTitles();
 if (document.fonts) document.fonts.load('500 20px "IBM Plex Mono"').then(() => buildAtlas(cellW, cellH)).catch(() => {});
 useTour('grand');
 $('#atlasCount').textContent = `${atlasRows.length} places`;
-music.set(SET.sound);
+// (the music is made right after the first frame, in a task of its own: music.warm)
+music.wish(SET.sound);
+requestAnimationFrame(() => setTimeout(() => music.warm(), 0));
 syncSettingsUI();
 tick(0);
 if (!applyHash()) tourGo(TOUR[0], true);
 tick(0);
 updateModeUI(); syncTimeUI(); updateWallpaperTitle();
-window.__cosmos = { get egl(){ return typeof EGL !== 'undefined' ? EGL : null; }, get etl(){ return ETL; }, get egr(){ return EGR; }, get epl(){ return EPL; }, get ect(){ return ECT; }, get plc(){ return PLC; }, get etr(){ return ETR; }, get eas(){ return EAS; }, get ecld(){ return ECLD; }, startTour, playFlyby, setMove(o, v, f){ flight = null; tween = null; tourGo(o.index, true); tour.on = false; flyMove = { o, v, t:f*v.hold, frozen:true }; },  get flyMove(){ return flyMove; }, startCompare, endCompare, setDeep, viewHash, applyHash, get cmp(){ return cmp; }, get ssRate(){ return ssRate; }, set ssRate(v){ ssRate = v; }, dbg:{ imp, impSpec, atlas, sphereRect, get tan(){ return [tanX, tanY]; }, get cols(){ return cols; }, get sceneH(){ return sceneH; }, get LODK(){ return LODK; }, PROGS }, OBJ, BYKEY, tourGo, lockOn, setTour, cam, orbit, tour, TOUR, SET, setOpt, music, LADDER, goLadder,
+window.__cosmos = { get egl(){ return typeof EGL !== 'undefined' ? EGL : null; }, get etl(){ return ETL; }, get egr(){ return EGR; }, get epl(){ return EPL; }, get ect(){ return ECT; }, get plc(){ return PLC; }, get mpl(){ return MPL; }, get mgl(){ return MGL; }, get mdt(){ return MDT; }, get etr(){ return ETR; }, get eas(){ return EAS; }, get ecld(){ return ECLD; }, get qk(){ return QK; }, startTour, playFlyby, setMove(o, v, f){ flight = null; tween = null; tourGo(o.index, true); tour.on = false; flyMove = { o, v, t:f*v.hold, frozen:true }; },  get flyMove(){ return flyMove; }, startCompare, endCompare, setDeep, viewHash, applyHash, get cmp(){ return cmp; }, get ssRate(){ return ssRate; }, set ssRate(v){ ssRate = v; }, dbg:{ imp, impSpec, atlas, sphereRect, get tan(){ return [tanX, tanY]; }, get cols(){ return cols; }, get sceneH(){ return sceneH; }, get LODK(){ return LODK; }, get frameMs(){ return ema; }, get busyMs(){ return busy; }, get cpuBound(){ return cpuBound(); }, PROGS }, OBJ, BYKEY, tourGo, lockOn, setTour, cam, orbit, tour, TOUR, SET, setOpt, music, LADDER, goLadder,
   land:(extra = 0.2) => { let n = 0; while (flight && n < 60*180){ tick(1/60); n++; } for (let i=0;i<extra*60;i++) tick(1/60); return n/60; },
   setDays:d => { ssDays = d; }, get days(){ return ssDays; }, stepObject, stepAngle, get tourId(){ return TOUR_ID; }, get tourGen(){ return TOUR_GEN; }, randomSeed:n => { RSEED = n >>> 0; }, samePlace, tourable, tourPool, tripClear, dealRandom, RANDOM_W, tripW:(a, b) => tripWeight(tripEnd(a), tripEnd(b)), get nextDeal(){ return nextDeal; }, get stepTarget(){ return flight ? (flight.dest || flight.obj).key : null; }, get via(){ return flight && flight.via ? flight.via.key : null; }, PASS,
   startShipCam, stopShipCam, setShipCamMode, get shipCam(){ return shipCam; }, SHIP_POSE, get saver(){ return SAVER; }, get show(){ return show; }, togglePlay, get flight(){ return flight; },
@@ -1882,6 +2001,8 @@ window.__cosmos = { get egl(){ return typeof EGL !== 'undefined' ? EGL : null; }
   view:(i, v) => { if (typeof i === 'string') i = BYKEY[i].index; const o = OBJ[i], vp = viewParams(o, v); flight = null; shipCam.on = false; tween = null; cam.focus = i; leash.x = leash.y = 0; orbit.lock = i; orbit.frame = camFrameOf(o); orbit.yaw = vp.yaw; orbit.pitch = vp.pitch; orbit.dist = orbit.distT = vp.dist; orbit.off = vp.off; orbit.offFn = vp.offFn; orbit.target = V.add(frel(o), vp.off); setInfo(i); applyOrbit(); tick(0); } };
 // (the atlas headings and chips, for tools/catalog.mjs, and the seed and the catalogue numbers the smoke test checks; a line of its own so it stays clear of edits to the hooks above)
 Object.assign(window.__cosmos.dbg, { GROUPS, CATS, catsOf, ATL, seedObjects:SEED_OBJECTS, catSplit, catClash, shareable, sharePage, shareList });
+// (the numbers the atlas shows, for the place pages that tools/og-image.mjs --meta writes: the same formatters, so a page never says other numbers)
+Object.assign(window.__cosmos.dbg, { catOf, distFromEarth, earthDist, sunDist, sunAU, fmtDist, fmtLen, FROM_SUN:[...FROM_SUN] });
 window.__cosmos.shareUrl = shareUrl;
 window.__cosmos.sx = SXDBG;   // (SpaceX launches: runs, missions, the launch camera; s4-spacex-run.js)
 queueNextFrame();

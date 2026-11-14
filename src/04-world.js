@@ -17,11 +17,14 @@ const WALLPAPER_FPS = wallpaperFps;
 let wallpaperTitlePos = URLQ.get('title') || 'none';
 // user settings, remembered between visits when the browser allows it
 const SET = (() => {
-const d = { launchReal:false, detail:1, detailAuto:true, travel:reduceMotion ? 'quick' : 'cinematic', glow:true, labels:true, twinkle:true, haloMark:false, menuSize:1.15, sound:true, volume:0.55, dwell:'normal', textSize:1, musicStyle:'mix', saverIdle:0, fadeUI:'quick', infoD:'full', infoM:'compact', rideCam:reduceMotion ? 'still' : 'moving' };
+  const d = { launchReal:false, detail:1, detailAuto:true, travel:reduceMotion ? 'quick' : 'cinematic', glow:true, labels:true, twinkle:true, haloMark:false, menuSize:1.15, sound:true, volume:0.55, dwell:'normal', textSize:1, musicStyle:'mix', saverIdle:0, fadeUI:'quick', infoD:'full', infoM:'compact', roAll:false, rideCam:reduceMotion ? 'still' : 'moving', quakes:false, quakesPick:false };
   const travel0 = d.travel;
   try { const s = JSON.parse(localStorage.getItem('gcdatlas.settings') || '{}'); for (const k in d) if (k in s && typeof s[k] === typeof d[k]) d[k] = s[k];
     // (auto detail since 0.9.4: someone who picked a detail other than the old default fine keeps it)
     if (!('detailAuto' in s) && 'detail' in s && s.detail !== 1) d.detailAuto = false; } catch (e) {}
+  // (the earthquakes and fires are off by default since 0.28.5, owner: they made Earth look noisy. Settings saved before then carried the old
+  // default on; only a click on the switch since then counts as a choice)
+  if (!d.quakesPick) d.quakes = false;
   // music moods since 0.9.2: a style saved before then becomes the mood that plays it
   d.musicStyle = { lofi:'beats', house:'groove', ambient:'calm' }[d.musicStyle] || (['mix', 'calm', 'beats', 'groove'].includes(d.musicStyle) ? d.musicStyle : 'mix');
   if (WALLPAPER){ const t = URLQ.get('travel'); Object.assign(d, { sound:false, fadeUI:'off', saverIdle:0, travel:t === 'cinematic' || t === 'quick' ? t : travel0 }); }
@@ -31,7 +34,7 @@ const d = { launchReal:false, detail:1, detailAuto:true, travel:reduceMotion ? '
 // Override per visitor with ?flags=name,-other in the URL (for that visit only) or localStorage 'gcdatlas.flags'. See docs/FEATURE_FLAGS.md.
 // (a link someone else shares must not change your settings for good, so URL flags are not saved; only known flag names count)
 const FLAGS = (() => {
-  const f = { live:true, launches:true, planes:true, backyard:true, earthStory:true, social:false, spacex:true, realEarth:true, analytics:true };
+  const f = { live:true, launches:true, planes:true, backyard:true, earthStory:true, social:false, spacex:true, realEarth:true, analytics:true, livePlanet:true, realMoon:true };
   try { const saved = JSON.parse(localStorage.getItem('gcdatlas.flags') || '{}'); for (const k of Object.keys(f)) if (typeof saved[k] === 'boolean') f[k] = saved[k]; } catch (e) {}
   const q = URLQ.get('flags');
   if (q){ for (const s of q.split(',')){ const k = s.replace(/^[-+]/, ''); if (Object.hasOwn(f, k)) f[k] = !s.startsWith('-'); } }

@@ -1,11 +1,10 @@
 <script>if (/[?&]wallpaper=1\b/.test(location.search)) document.documentElement.classList.add('wallpaper');</script>
-<title>gcdatlas</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Major+Mono+Display&display=swap">
+<title>gcdatlas · the real universe, drawn in ASCII</title>
+<!--FONTS-->
 <style>
 :root{
   color-scheme:dark;
+  --safe-b:env(safe-area-inset-bottom,0px);   /* (read by idleSlide in 09h-ui.js) */
   --void:#04050a;
   --ink:#e2e8f5;
   --soft:#c3cbe0;
@@ -33,7 +32,7 @@ button,input{font:inherit}
 #view.dragging{cursor:grabbing}
 .info h1,.info .type,.info .where,.info .fact,.info .readout,.info .progress,.caption span,.help-card,.atlas-list .an,.trow small,.tm-sub{pointer-events:auto;-webkit-user-select:text;user-select:text;cursor:text}
 #view,.labels,.ladder,.btn,.nav,.act,.seg,.tog,.shipmark,.shiparrow,.brand,.stop{-webkit-user-select:none;user-select:none}
-body:has(#view.dragging) *{-webkit-user-select:none;user-select:none}
+body.view-drag *{-webkit-user-select:none;user-select:none}
 ::selection{background:rgba(255,179,92,.35);color:#fff}
 
 /* ---- info panel, top left */
@@ -73,9 +72,15 @@ body.info-compact .stopl:has(> .stopinfo.kind:not(:empty)){grid-template-columns
 .readout.fade{animation:fadeIn 1s ease-out}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 .info{animation:fadeIn 1.2s ease-out}
-.readout{margin-top:8px;color:var(--flare);font-size:calc(11.5px*var(--ts));font-variant-numeric:tabular-nums;white-space:pre-wrap;min-height:1.5em;max-width:50ch}
+.readout{margin-top:8px;color:var(--flare);font-size:calc(11.5px*var(--ts));font-variant-numeric:tabular-nums;white-space:normal;min-height:1.5em;max-width:50ch}
+/* (a row a line, 0.28.3: labels and the dots between parts grey, credits last and smaller, a button for the rest of a long one) */
+.readout .ro-l{white-space:pre-wrap;margin:0 0 3px}
+.readout .ro-k,.readout .ro-s{color:var(--dim)}
+.readout .ro-c{color:var(--dim);font-size:calc(10.5px*var(--ts))}
+.readout .ro-more{pointer-events:auto;background:none;border:0;padding:2px 0;margin-top:1px;font:inherit;font-size:calc(10.5px*var(--ts));color:var(--soft);letter-spacing:.04em;cursor:pointer}
+.readout .ro-more:hover{color:var(--ink)}
 .scale{display:flex;align-items:center;gap:8px;margin-top:8px;color:var(--soft);font-size:calc(11px*var(--ts));font-variant-numeric:tabular-nums;white-space:nowrap;pointer-events:auto;cursor:help;width:max-content}
-.scale .rlab{color:var(--faint);letter-spacing:.1em;text-transform:uppercase;font-size:calc(10px*var(--ts))}
+.scale .rlab{color:var(--dim);letter-spacing:.1em;text-transform:uppercase;font-size:calc(10px*var(--ts))}
 .scale .bar{display:inline-block;height:5px;border:1px solid var(--soft);border-top:0;flex:none}
 /* the angle line sits right under the name (owner, 0.9.9: at the bottom of the panel it looked cut off from it), so the two read as one header */
 .progress{margin-top:1px;color:var(--faint);font-size:calc(11px*var(--ts));white-space:pre;font-variant-numeric:tabular-nums;display:flex;align-items:center;min-height:1.5em}
@@ -100,7 +105,7 @@ body.info-compact .stopl:has(> .stopinfo.kind:not(:empty)){grid-template-columns
 .itool{white-space:nowrap;font:inherit;font-size:calc(10px*var(--ts));letter-spacing:.1em;text-transform:uppercase;color:var(--dim);background:none;border:1px solid transparent;border-radius:3px;padding:1px 6px;cursor:pointer;
   min-height:28px;margin:-4.5px 0}   /* (a 28 px target; the negative margin keeps the row's height) */
 .itool:hover{color:var(--ink);border-color:var(--line)}
-body.info-compact .info .acts,body.info-compact .info .type,body.info-compact .info .fact,body.info-compact .info .readout,body.info-compact .info .scale{display:none}
+body.info-compact .info .acts,body.info-compact .info .qrow,body.info-compact .info .type,body.info-compact .info .fact,body.info-compact .info .readout,body.info-compact .info .scale{display:none}
 body.info-hidden .info{display:none}
 .info-pill{position:fixed;left:calc(16px + env(safe-area-inset-left,0px));top:calc(28px + 28.5px*var(--ts) + env(safe-area-inset-top,0px));z-index:2;display:flex;align-items:center;gap:8px;max-width:calc(100vw - 120px);
   padding:3px 11px 3px 4px;color:var(--soft);background:var(--panel);border:1px solid var(--line);border-radius:14px;font-size:calc(11.5px*var(--ts));cursor:pointer;-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
@@ -126,6 +131,8 @@ body.ui-idle .caption.rest{opacity:0;transition:background 1s,border-color 1s,op
 
 /* info actions: share, compare */
 .acts{display:flex;gap:6px;margin:9px 0 2px}
+.acts.qrow{flex-wrap:wrap;margin:7px 0 2px}
+.acts.qrow[hidden]{display:none}
 .act{pointer-events:auto;font-size:calc(10.5px*var(--ts));letter-spacing:.06em;color:var(--dim);background:rgba(5,7,14,.5);border:1px solid var(--line);border-radius:10px;padding:2px 9px;cursor:pointer}
 .act:hover{color:var(--flare);border-color:rgba(255,179,92,.5)}
 .act[aria-pressed="true"]{color:var(--flare);border-color:rgba(255,179,92,.6)}
@@ -137,6 +144,10 @@ body.ui-idle .caption.rest{opacity:0;transition:background 1s,border-color 1s,op
 .caption span{flex:1}
 .caption span::after{content:"_";color:var(--flare);margin-left:2px;animation:blink 1s steps(1) infinite}
 .caption.done span::after{content:""}
+/* (a launch notice's x and its fade after 10 s: NOTE in 09-render.js) */
+.cap-x{flex:none;background:none;border:0;color:var(--dim);cursor:pointer;font-size:calc(16px*var(--ts));line-height:1;padding:0;display:grid;place-items:center;min-width:28px;min-height:28px;margin:-6px -8px -6px -4px}
+.cap-x:hover{color:var(--ink)}
+.caption.going{opacity:0;pointer-events:none;transition:opacity 1.2s ease-in}
 @keyframes blink{50%{opacity:0}}
 
 /* ---- controls, top right. The bar leaves 400 px on its left for the logo and the info panel (440 before 0.9.9: the top row sits above the
@@ -155,7 +166,7 @@ body.ui-idle .caption.rest{opacity:0;transition:background 1s,border-color 1s,op
 .btn.primary{color:var(--ink)}
 .seg.mini{flex-wrap:nowrap;gap:0;background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:1px;-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
 .seg.mini button{flex:0 0 auto;border:0;background:none;padding:4px 7px;font-size:calc(11px*var(--ts));border-radius:2px}
-.seg.mini .seg-l{align-self:center;padding:0 4px 0 7px;color:var(--faint);font-size:calc(10px*var(--ts));letter-spacing:.08em}
+.seg.mini .seg-l{align-self:center;padding:0 4px 0 7px;color:var(--dim);font-size:calc(10px*var(--ts));letter-spacing:.08em}
 /* two rows on a desk: the tools on top; travel, resume tour and play / pause below (right-aligned), so the play button's words
    ("pause", "back to the Moon") can change without anything on the top row moving or a button jumping between rows */
 .controls::after{content:"";order:7;flex-basis:100%;height:0}
@@ -263,7 +274,7 @@ body.halo-lab .brand,body.halo-lab .topr,body.halo-lab .info,body.halo-lab .info
 .search input::placeholder{color:var(--faint)}
 .search input:focus{border-color:rgba(255,179,92,.6);background:rgba(5,7,14,.85)}
 .search input::-webkit-search-cancel-button{display:none}
-.search kbd{position:absolute;right:8px;font:calc(10px*var(--ts)) var(--mono);color:var(--faint);border:1px solid var(--line);border-radius:2px;padding:0 4px;pointer-events:none}
+.search kbd{position:absolute;right:8px;font:calc(10px*var(--ts)) var(--mono);color:var(--dim);border:1px solid var(--line);border-radius:2px;padding:0 4px;pointer-events:none}
 .search input:focus + kbd{display:none}
 
 .strip{position:fixed;left:0;right:0;bottom:0;padding:0 16px calc(12px + env(safe-area-inset-bottom,0px));
@@ -272,11 +283,23 @@ body.showcase .strip{padding-bottom:calc(124px + env(safe-area-inset-bottom,0px)
 .toast{align-self:center;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:5px 12px;font-size:calc(11.5px*var(--ts));
   opacity:0;transition:opacity .4s;text-align:center;max-width:100%}
 .toast.on{opacity:1}
-.hint{color:var(--faint);font-size:calc(11px*var(--ts));text-align:center;transition:opacity .8s}
+/* the first-visit hint (0.27.3, owner's pick over brighter words in the same place): a small card with the three or four things to do, the
+   action words in orange. It was one line of 11 px in the faintest grey (2.7:1), the only instruction a new visitor gets. Shown by the
+   script only to someone who has not used the atlas yet (09-render.js: hideHint); it fades with the idle interface and comes back with it. */
+.hint{align-self:center;display:flex;flex-wrap:wrap;justify-content:center;gap:4px 22px;max-width:100%;padding:9px 18px;border:1px solid var(--line);border-radius:6px;
+  background:rgba(8,10,18,.86);color:var(--soft);font-size:calc(12px*var(--ts));letter-spacing:.02em;transition:opacity .8s}
+.hint[hidden]{display:none}
+.hint.off{opacity:0}
+.hint b{color:var(--flare);font-weight:500}
+body.ui-idle .hint{opacity:0;transition:opacity 1s ease-in}
+@media (pointer:coarse){ .hint .kb{display:none} }
+@media (pointer:fine){ .hint .touch{display:none} }
 
 /* ---- labels on objects */
 .labels{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:1}
-.lab{position:absolute;left:0;top:0;font-size:calc(10.5px*var(--ts));color:var(--dim);letter-spacing:.06em;white-space:nowrap;background:none;border:0;
+/* (a dark plate behind every label, 0.27.3: the place marks on Earth's bright globe were struck through by the rows of characters, and a
+   stronger dark edge round the letters did not help. Against the dark sky the plate does not show.) */
+.lab{position:absolute;left:0;top:0;font-size:calc(10.5px*var(--ts));color:var(--dim);letter-spacing:.06em;white-space:nowrap;background:rgba(4,5,10,.8);border:0;border-radius:3px;
   padding:2px 4px;cursor:pointer;pointer-events:auto;text-shadow:0 0 6px #000,0 0 2px #000;will-change:transform,opacity;
   opacity:0;visibility:hidden;transition:opacity .3s ease-in,visibility 0s linear .3s}
 .lab.on{opacity:1;visibility:visible;transition:opacity .8s ease-out,visibility 0s}
@@ -398,7 +421,9 @@ body.showcase .strip{padding-bottom:calc(124px + env(safe-area-inset-bottom,0px)
 .agroup[data-k]:not([data-k=""]){color:var(--kc);box-shadow:inset 0 -1px 0 color-mix(in srgb,var(--kc) 30%,transparent)}
 .agroup .gnote{flex:none;margin-left:auto;color:var(--dim);font-size:calc(10px*var(--ts));letter-spacing:.02em;text-transform:none}
 .arow.child .an::before{content:"\2514\00a0";color:var(--faint);font-weight:400}
+.arow.grand .an::before{content:"\00a0\00a0\2514\00a0"}
 .aend{padding:10px 12px 2px;color:var(--dim);font-size:calc(10px*var(--ts))}
+.aend a{display:inline-block;padding:8px 0;margin:-8px 0;color:var(--flare);text-underline-offset:3px}
 /* .flow: one scrolling column under the head (phones held upright, and wherever the list would be squeezed): the controls scroll away with the list,
    the results line stays at the top and the headings stick under it (--rh, its height, kept by src/09-render.js) */
 .atlas.flow{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) auto;grid-template-areas:"head" "body" "foot"}
@@ -492,6 +517,11 @@ body.showcase .strip{padding-bottom:calc(124px + env(safe-area-inset-bottom,0px)
 /* ---- scale ladder, right edge */
 .ladder{position:fixed;right:calc(36px + env(safe-area-inset-right,0px));top:calc(var(--ctl-b,54px) + 60px);bottom:calc(84px + env(safe-area-inset-bottom,0px));width:2px;
   background:linear-gradient(rgba(143,160,210,.55),rgba(143,160,210,.25));border-radius:1px;z-index:2;transition:right .25s}
+/* a soft shade under the scale (0.27.3, owner's pick over a plate behind each name): over a bright scene, Earth's second tour angle or
+   M87*'s disc, its names could not be read. Like the info panel's own (.info::before); against the dark sky it does not show. */
+.ladder::before{content:"";position:absolute;top:-76px;bottom:-70px;right:calc(-36px - env(safe-area-inset-right,0px));width:300px;z-index:-1;pointer-events:none;
+  background:linear-gradient(to left,rgba(3,4,9,.86),rgba(3,4,9,.8) 45%,rgba(3,4,9,.55) 72%,rgba(3,4,9,0));
+  -webkit-mask-image:linear-gradient(to bottom,transparent,#000 44px,#000 calc(100% - 44px),transparent);mask-image:linear-gradient(to bottom,transparent,#000 44px,#000 calc(100% - 44px),transparent)}   /* (its two ends fade out too) */
 .atlas-open .ladder{display:none}   /* (while search or the atlas is open; it used to move out into the scene) */
 .lad-cap{position:absolute;right:-2px;top:-26px;color:var(--dim);font-size:calc(10px*var(--ts));letter-spacing:.14em;text-transform:uppercase;white-space:nowrap}
 .lad-track{position:absolute;inset:-6px -18px -6px -30px;cursor:ns-resize;touch-action:none}
@@ -580,6 +610,14 @@ body.showcase .strip{padding-bottom:calc(124px + env(safe-area-inset-bottom,0px)
 .sm-row button.sm-sw[aria-checked="true"] small{color:var(--ship)}
 #btnShip.following{color:var(--ship);background:rgba(143,230,255,.14)}
 .nogl{position:fixed;inset:0;display:grid;place-items:center;padding:16px;text-align:center;color:var(--soft)}
+/* the loading line (0.27.2): in the page's own HTML, so it shows from the first paint, while the script (most of the download) arrives and
+   starts. The dots fade by opacity, which the browser animates off the main thread, so they keep moving while the script runs. */
+.boot{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:1;color:var(--dim);font-size:12px;letter-spacing:.14em}
+.boot i{font-style:normal;animation:bootDot 1.2s ease-in-out infinite}
+.boot i:nth-child(2){animation-delay:.2s}
+.boot i:nth-child(3){animation-delay:.4s}
+@keyframes bootDot{0%,70%,100%{opacity:.15}35%{opacity:1}}
+@media (prefers-reduced-motion:reduce){ .boot i{animation:none} }
 
 /* collection log */
 .arow.seen .an::after{content:" \2713";color:#a8f0b0;font-weight:400}
@@ -592,6 +630,7 @@ body.showcase .strip{padding-bottom:calc(124px + env(safe-area-inset-bottom,0px)
 .d-x{background:none;border:0;color:var(--dim);cursor:pointer;font-size:calc(16px*var(--ts));line-height:1;padding:0 2px;
   display:grid;place-items:center;min-width:28px;min-height:28px;margin:-6px -7px -6px 0}   /* (a 28 px target; the negative margins keep the x where it was) */
 .d-x:hover{color:var(--ink)}
+.daily.going{opacity:0;pointer-events:none;transition:opacity 1.2s ease-in}
 .d-name{margin-top:4px;font-size:calc(15px*var(--ts));color:var(--ink);font-weight:500}
 .d-type{color:var(--dim);font-size:calc(11px*var(--ts))}
 .d-acts{display:flex;gap:6px;margin-top:8px}
@@ -641,7 +680,7 @@ body.photo:not(.photo-labels) .labels{opacity:0}
 .ev small{display:block;color:var(--faint);font-size:calc(10.5px*var(--ts))}
 .sky-places{margin-top:6px}
 .sky-where{color:var(--soft);font-size:calc(11px*var(--ts));padding:0 6px}
-body.sky .info .acts,body.sky .ladder,body.sky .lad-chip,body.sky .progress{opacity:.0;pointer-events:none}
+body.sky .info .acts,body.sky .info .qrow,body.sky .ladder,body.sky .lad-chip,body.sky .progress{opacity:.0;pointer-events:none}
 .story .st-when{font-size:calc(18px*var(--ts));color:var(--flare);font-variant-numeric:tabular-nums}
 #storyTime{width:100%;accent-color:var(--flare);margin-top:6px}
 .st-ticks{position:relative;height:10px;margin:0 8px}
@@ -650,6 +689,7 @@ body.sky .info .acts,body.sky .ladder,body.sky .lad-chip,body.sky .progress{opac
 .st-text{margin-top:3px;color:var(--soft);font-size:calc(12px*var(--ts));min-height:3.4em;-webkit-user-select:text;user-select:text}
 
 @media (max-width:1100px){ .search input{width:170px} }
+.txt-big .search input{width:212px}   /* (big screens' text is 10% bigger: applyTextSize) */
 /* ---- phones and small windows: a dock of big buttons at the bottom, the info as a card above it, the scale ladder behind a chip.
    --dock-h and --sheet-h are measured by src/09h-ui.js so captions, toasts and cards stack above them. */
 @media (max-width:680px), (max-height:520px) and (max-width:1000px){
@@ -683,7 +723,7 @@ body.sky .info .acts,body.sky .ladder,body.sky .lad-chip,body.sky .progress{opac
   .info{top:auto;bottom:calc(var(--dock-h,64px) + 6px);box-sizing:border-box;padding:0 12px 10px;pointer-events:auto;
     background:rgba(5,7,14,.7);border:1px solid var(--line);border-radius:14px;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
     max-height:calc(100% - var(--dock-h,64px) - 60px - env(safe-area-inset-top,0px));overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none;text-shadow:0 0 8px #000;touch-action:pan-y;
-    transition:background .25s,border-color .25s,opacity .25s,-webkit-backdrop-filter .25s,backdrop-filter .25s}
+    transition:background .25s,border-color .25s,opacity .25s,-webkit-backdrop-filter .25s,backdrop-filter .25s,transform .35s ease-out}
   .info::-webkit-scrollbar{display:none}
   .info::before{display:none}
   .grip{display:block;position:sticky;top:0;z-index:1;width:calc(100% + 24px);height:20px;margin:0 -12px;padding:0;background:none;border:0;cursor:pointer}
@@ -703,10 +743,18 @@ body.sky .info .acts,body.sky .ladder,body.sky .lad-chip,body.sky .progress{opac
   .acts{flex-wrap:wrap;margin:10px 0 4px}
   .act{padding:4px 11px}
   .fact{font-size:calc(12px*var(--ts));max-width:none}
-  .readout{white-space:pre-wrap;width:auto;max-width:none}
+  .readout{white-space:normal;width:auto;max-width:none}
   .progress{margin-top:4px}
   .progress.hintish{display:none}
-  body.ui-idle .info{background:transparent;border-color:transparent;-webkit-backdrop-filter:none;backdrop-filter:none;pointer-events:none;transition:background 1s,border-color 1s}
+  body.ui-idle .info{background:transparent;border-color:transparent;-webkit-backdrop-filter:none;backdrop-filter:none;pointer-events:none;transition:background 1s,border-color 1s,transform 1.2s ease-in-out}
+  /* (idle, what stays of the card, the stop, the name and the angle line, slides down to the bottom of the screen where the dock was:
+     left where the card stood it floated in the sky over the faded buttons. --idle-y is how far and body.slid says when, from idleSlide in
+     09h-ui.js, which holds it there until a waking tap has landed, so a faded button in the card still works on the first tap; the angle
+     arrows fold away so the line starts at the edge, and the tour's name loses its frame) */
+  body.slid .info{transform:translateY(var(--idle-y,0px))}
+  .progress .anav{transition:opacity .25s,width .6s,margin .6s,border-width .6s}
+  body.ui-idle .info .progress .anav{width:0;margin-left:0;margin-right:0;border-width:0;overflow:hidden}
+  body.ui-idle .info .mode.tourpick{border-color:transparent;background:none;transition:border-color 1s,background 1s}
   /* hidden: a pill above the dock brings it back */
   .info-pill{top:auto;left:calc(10px + env(safe-area-inset-left,0px));bottom:calc(var(--dock-h,64px) + 8px);padding:6px 14px 6px 6px;font-size:calc(12px*var(--ts));background:rgba(5,7,14,.72)}
   .info-pill b{width:calc(22px*var(--ts));height:calc(22px*var(--ts))}
@@ -734,6 +782,7 @@ body.sky .info .acts,body.sky .ladder,body.sky .lad-chip,body.sky .progress{opac
   .arow{padding-top:6px;padding-bottom:6px}   /* (a little taller for thumbs) */
   /* the scale ladder: folded behind a chip at the top right, opens over a dark scrim */
   .ladder{display:none}
+  .ladder::before{display:none}   /* (the scrim is its shade here) */
   .controls #btnPlay{display:none}
   .play-m{display:grid;place-items:center;width:32px;height:32px;padding:0;border-radius:50%;color:var(--ink);background:rgba(5,7,14,.62);border:1px solid var(--line);font-size:calc(12px*var(--ts));cursor:pointer;
     -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
@@ -743,6 +792,19 @@ body.sky .info .acts,body.sky .ladder,body.sky .lad-chip,body.sky .progress{opac
     -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
   .lad-chip b{color:var(--flare);font-weight:400}
   .lad-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* bigger places to tap, the same look (0.27.3): an invisible margin round the pause button, the scale chip and the card's small buttons,
+     which were 28 to 36 px tall. 44 px tall where there is room (pause, the chip, the angle arrows); the tour's name, more, hide and next
+     stop reach 38 px: the rows of the card are 5 px apart, and above the first row the margin stops short of the grip's handle.
+     (None of them has an ::after of its own. The margins never reach over a neighbour's own shape.) */
+  .play-m,.lad-chip,.mode.tourpick,.itool,.gonext,.progress .anav{position:relative}
+  .play-m::after,.lad-chip::after,.mode.tourpick::after,.itool::after,.gonext::after,.progress .anav::after{content:"";position:absolute}
+  .play-m::after{inset:-7px -3px -7px -7px}
+  .lad-chip::after{inset:-8px -5px -9px -3px}
+  .mode.tourpick::after,.itool::after{inset:-9px -2px -3px -2px;z-index:2}   /* (over the card's grip, which is z-index 1) */
+  .gonext::after{inset:-2px 0}
+  .progress .anav::after{inset:-2px 0 -10px}
+  .progress .anav:first-child::after{left:-4px}
+  .progress .anav:last-child::after{right:-4px}
   body.lad-open .lad-chip{color:var(--flare);border-color:rgba(255,179,92,.6)}
   body.lad-open::after{content:"";position:fixed;top:0;right:0;bottom:0;width:min(290px,82vw);z-index:5;pointer-events:none;background:linear-gradient(to left,rgba(3,4,9,.94),rgba(3,4,9,.84) 60%,rgba(3,4,9,0))}
   body.lad-open .ladder,body.lad-open.atlas-open .ladder{display:block;z-index:6;right:calc(28px + env(safe-area-inset-right,0px));top:calc(88px + env(safe-area-inset-top,0px));bottom:calc(var(--dock-h,64px) + 30px);opacity:1;pointer-events:auto}

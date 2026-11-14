@@ -127,6 +127,7 @@ function startLaunchCam(run){
   LCAM.on = true; LCAM.took = false; LCAM.run = run; LCAM.shot = shotIndex(run); LCAM.focus = null; LCAM.eo = LCAM.lo = null; LCAM.endT = 0; LCAM.st = 0; LCAM.upW = LCAM.fwW = null; run.hold = false; run.seen = true; motion.last = 'launch';
   stopTour(false); pauseShow(); tween = null; flyMove = null; shipCam.on = shipCam.pending = false;
   if (run.mode === 'real') dayTo(realJD() - JD_NOW, 2.5);   // (a live launch is lit by the real Sun: the atlas clock goes to now)
+  dockLight(run, 2.5);
   updateLaunchCam(0); updateModeUI();
 }
 // (flying off elsewhere only switches it off: the flight has already set the camera, the lock and the info panel)
@@ -318,6 +319,7 @@ function sxFly(run){
   startFlight(F, vp, () => { if (SX.pend && SX.pend.run === run){ SX.pend = null; startLaunchCam(run); } });
   // (the day comes during the first half of the flight, a time-lapse seen from far out, never during the descent)
   if (run.day){ run.day = false; dayTo(afternoonAt(SXS[run.site]), Math.max(1.5, (flight ? flight.dur : 3)*0.5)); }
+  dockLight(run, Math.max(1.5, (flight ? flight.dur : 3)*0.5));
   motion.last = 'launch';
   updateModeUI();
 }
@@ -379,7 +381,7 @@ function dayStep(dt){ if (DAY.T > 0){ DAY.t += dt; const e = smoother(clamp(DAY.
 // (near the ground, watching a launch or visiting a place on Earth, the Solar System clock runs in real time, so the Sun stays put and the
 // ground does not spin round)
 function clockStep(){
-  const want = LCAM.on || (SX.pend && flight) || (SXENV.on && SXENV.alt < 40) || EPL.hold();
+  const want = LCAM.on || (SX.pend && flight) || (SXENV.on && SXENV.alt < 40) || EPL.hold() || MPL.hold();   // (MPL: a place on the Moon, 0.27.0)
   if (want && sxRatePrev == null){ sxRatePrev = ssRate; ssRate = 1/86400; }
   else if (!want && sxRatePrev != null){ if (ssRate === 1/86400) ssRate = sxRatePrev; sxRatePrev = null; }
 }
@@ -408,7 +410,12 @@ function sxTick(dt){
     if (run.mode === 'real') run.mt = (now - run.t0)/1000;
     else if (!run.hold && !run.ended){
       run.mt += dt*runRate(run);
-      if (mis.jump && run.mt >= mis.jump[0] && run.mt < mis.jump[1]){ run.mt = mis.jump[1]; if (run.key === 'dragon') dockInDaylight(); }
+      // (the skip to the docking moves the atlas clock on a day only on a flight you are on: watching it, or locked on one of its parts,
+      // where the fade through black hides it. A replay nobody watches leaves the clock alone, owner 2026-11-10: looking at Earth, the
+      // date, the Moon and the planets hopped a day in one frame. It notes that its docking may be in the dark: dockLight, on a watch)
+      if (mis.jump && run.mt >= mis.jump[0] && run.mt < mis.jump[1]){ run.mt = mis.jump[1];
+        if (run.key === 'dragon'){ const o = OBJ[orbit.lock];
+          if ((LCAM.run === run && (LCAM.on || LCAM.took)) || (!flight && o && o.sx && o.sx.fam === mis.fam)) dockInDaylight(); else run.dock = true; } }
     }
     if (run.mt >= end && !run.ended){ run.ended = true; run.mt = end; run.endAt = SX_T; if (run.mode === 'real' && !(LCAM.on && LCAM.run === run)) { endRun(run); continue; } }
     // an ended flight stays as it finished until the camera has left it; one never watched just ends
@@ -440,7 +447,7 @@ function sxTick(dt){
   }
   if (!atEarth && SX.nextReplay < SX_T + 20) SX.nextReplay = SX_T + 20;
   // the caption: what is flying, with a button to watch it (while you watch: the button switches between highlights and real speed)
-  LCAP.txt = ''; LCAP.btn = ''; LCAP.go = null; LCAP.live = false;
+  LCAP.txt = ''; LCAP.btn = ''; LCAP.go = null; LCAP.live = false; LCAP.run = null;
   if (LCAM.on){ const r = LCAM.run, real = r.mode !== 'real' && SET.launchReal;
     LCAP.txt = `${r.mis.name} · ${r.mode === 'real' ? 'live' : real ? 'replay at real speed' : 'replay'}${eventNow(r) ? ' · ' + eventNow(r) : ''} · ${clk(r.mt)}`;
     if (r.mode !== 'real'){ LCAP.btn = SET.launchReal ? 'highlights' : 'real speed'; LCAP.go = () => { setOpt('launchReal', !SET.launchReal, true); toast(SET.launchReal ? 'real speed: every second as it happens (a Starship flight takes about 9 minutes)' : 'highlights: the quiet parts sped up'); }; } }
@@ -450,7 +457,7 @@ function sxTick(dt){
     if (r && !(SX.pend && SX.pend.run === r)){
       const where = SXS[r.site].short;
       LCAP.txt = r.mode === 'real' ? `live · ${r.mis.name}${r.label ? ' · ' + r.label : ''} from ${where} · ${clk(r.mt)}` : `illustrative replay · ${r.mis.name} from ${where}${eventNow(r) ? ' · ' + eventNow(r) : ''} · ${clk(r.mt)}`;
-      LCAP.btn = 'watch'; LCAP.go = () => sxWatch(r); LCAP.live = r.mode === 'real' && r.mt > -600;
+      LCAP.btn = 'watch'; LCAP.go = () => sxWatch(r); LCAP.live = r.mode === 'real' && r.mt > -600; LCAP.run = r;   // (a notice: 09-render.js shows it 10 s)
     }
   }
   // near the ground (or watching) the Solar System clock runs in real time, so the Sun stays put and the pad does not spin round
@@ -507,15 +514,28 @@ function sxHear(){
 // next few minutes, so the docking can be seen (it is dark for about 35 of every 93 minutes)
 function dockInDaylight(){
   const iss = BYKEY.iss; if (!iss) return;
-  DAY.T = 0; ssDays += 1;
+  DAY.T = 0; ssDays = stationLit(ssDays + 1);
+  earth.update(0); iss.update(0);
+}
+// (the first moment from a moment of the atlas clock, within 100 minutes, when the station is in sunlight then and 2 and 4 minutes later;
+// the clock is put back)
+function stationLit(from){
+  const iss = BYKEY.iss, d0 = ssDays; let t = from;
   for (let k=0;k<100;k++){
     let lit = true;
-    for (const dtm of [0, 2, 4]){ const d0 = ssDays; ssDays += dtm/1440; earth.update(0); iss.update(0); const p = M3.applyT(earth.rot, V.mul(iss.offset, 1/KM)), s = sunFixed();
-      if (V.dot(p, s) < 0 && V.len(V.sub(p, V.mul(s, V.dot(p, s)))) < RE_KM) lit = false; ssDays = d0; }
+    for (const dtm of [0, 2, 4]){ ssDays = t + dtm/1440; earth.update(0); iss.update(0); const p = M3.applyT(earth.rot, V.mul(iss.offset, 1/KM)), s = sunFixed();
+      if (V.dot(p, s) < 0 && V.len(V.sub(p, V.mul(s, V.dot(p, s)))) < RE_KM) lit = false; }
     if (lit) break;
-    ssDays += 1/1440;
+    t += 1/1440;
   }
-  earth.update(0); iss.update(0);
+  ssDays = d0; earth.update(0); iss.update(0);
+  return t;
+}
+// a Dragon replay that reached its docking with nobody watching left the atlas clock alone (sxTick). Once you watch it, the clock eases on
+// over T s to the station's next moment in sunlight, if it is in the dark: 35 minutes at most, never a day
+function dockLight(run, T){
+  if (!run.dock || !BYKEY.iss) return; run.dock = false;
+  const t = stationLit(ssDays); if (t > ssDays + 1e-6) dayTo(t, T);
 }
 // playback speed at mission time t: the rate of the last step at or before t
 // the playback speed at mission time t. A mission's table gives a speed from each time; between two speeds it eases, log-linear in mission

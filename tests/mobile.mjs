@@ -136,6 +136,13 @@ await page.evaluate(() => { __cosmos.startTour('grand'); });
 await fade('quick'); await page.waitForTimeout(500); await wake();
 await page.waitForFunction(() => document.body.classList.contains('ui-idle'), null, { timeout:15000 }).catch(() => fail('the interface did not fade on a tour'));
 await page.waitForTimeout(1300); await shot('6-tour-idle');
+// (0.28.2, owner: faded, the stop, the name and the angle line hung in the sky where the card stood, "randomly floating": they sit at the
+// bottom now, where the dock was, and the dock's faded buttons still take a tap at their middles)
+{ const z = await page.evaluate(() => { let bot = 0; for (const e of document.querySelectorAll('.info .stop, .info .title, .info .progress')){ if (!e.offsetHeight || e.matches('.hintish, .tip')) continue; bot = Math.max(bot, e.getBoundingClientRect().bottom); }
+    const blocked = [...document.querySelectorAll('.controls .btn')].filter(b => b.offsetParent).map(b => { const r = b.getBoundingClientRect(), t = document.elementFromPoint(r.left + r.width/2, r.top + r.height/2); return b.contains(t) ? null : b.textContent.trim(); }).filter(Boolean);
+    return { gap:Math.round(innerHeight - bot), blocked }; });
+  if (!(z.gap >= 6 && z.gap <= 30)) fail(`faded on a tour, the card's last line is ${z.gap} px above the bottom (6 to 30 wanted)`);
+  if (z.blocked.length) fail(`faded, the slid card covers the middle of the dock's ${z.blocked.join(', ')}`); }
 await page.touchscreen.tap(195, 400); await page.waitForTimeout(500);
 if (await has('ui-idle')) fail('a tap did not bring the interface back');
 if (!(await page.evaluate(() => __cosmos.tour.on))) fail('the wake-up tap stopped the tour');
@@ -436,5 +443,26 @@ await shot('12-landscape-slide');
 if (ls.lock !== 'earth' || !(ls.x > 0 && ls.x < 844 && ls.y > 0 && ls.y < 390) || (ls.x > ls.card[0] + 1 && ls.x < ls.card[2] - 1 && ls.y > ls.card[1] + 1 && ls.y < ls.card[3] - 1))
   fail('on its side a two-finger slide put Earth off screen or under the card: ' + JSON.stringify(ls));
 
+// 0.27.3: bigger places to tap, the same look. Each small button's tap area is measured by walking out from its edges (an invisible margin
+// reaches further than the button is drawn): pause, the scale chip and the angle arrows 42 px or more tall, the tour's name, more, hide and
+// next stop 36 px or more (the card's rows are 5 px apart), and never over a neighbour's own shape (the walk stops where another element
+// answers, so a margin that swallowed a neighbour would show up as that neighbour's area shrinking below its drawn size).
+{ const t = await openPage({ phone:true });
+  await t.page.waitForTimeout(800);
+  const taps = await t.page.evaluate(() => { const out = {};
+    for (const id of ['btnPlayM', 'ladChip', 'modeTour', 'infoMore', 'infoHide', 'goNext', 'prevObj', 'nextObj']){
+      const el = document.getElementById(id), b = el.getBoundingClientRect(); if (!b.width){ out[id] = null; continue; }
+      const hit = (x, y) => { const e = document.elementFromPoint(x, y); return !!e && (e === el || el.contains(e)); };
+      const cx = (b.left + b.right)/2, cy = (b.top + b.bottom)/2; let up = 0, down = 0;
+      while (up < 30 && hit(cx, b.top - up - 1)) up++; while (down < 30 && hit(cx, b.bottom + down)) down++;
+      out[id] = { h:Math.round(b.height + up + down), drawn:Math.round(b.height), own:hit(cx, b.top + 1) && hit(cx, b.bottom - 1) }; }
+    return out; });
+  for (const [id, min] of [['btnPlayM', 42], ['ladChip', 42], ['prevObj', 42], ['nextObj', 42], ['modeTour', 36], ['infoMore', 36], ['infoHide', 36], ['goNext', 36]]){
+    const v = taps[id];
+    if (!v) fail('tap areas: #' + id + ' is not shown on a phone at the start');
+    else if (v.h < min || !v.own) fail(`#${id} takes taps over ${v.h} px (drawn ${v.drawn}), wanted ${min} or more` + (v.own ? '' : ', and a neighbour\'s margin covers its own shape'));
+  }
+  errors.push(...t.errors); await t.browser.close();
+}
 report('mobile', errors, 'screenshots in tests/out/mobile' + ` · atlas fits at 90 to 160% menu text; rows with a kind and "not seen yet": upright ${upright.join(', ')}; on its side ${sideways.join(', ')}` + (lab ? ` · wake-up tap on "${lab.t}" checked` : '') + ` · pinch x${ratio.toFixed(2)} for fingers 3x apart · two-finger slide stays locked, Earth at ${Math.round(g2.x)}, ${Math.round(g2.y)} · home first in the dock · song list: ${sl.n} songs, a tap played ${pickId} · first tap on the faded "${gn.txt}" flew on to ${gn.next}`);
 await browser.close();
