@@ -1,7 +1,7 @@
 // Orchestrator for gcdatlas test suite.
 // 1. Runs all test files unconditionally with a 2-worker pool (utilizing runner's 2 vCPUs).
-// 2. Worker 1 runs tests/earth.mjs immediately, Worker 2 runs other tests sequentially.
-// 3. For any test that fails, compares the failure against origin/main in an isolated worktree.
+// 2. Worker 1 runs tests/earth.mjs immediately, Worker 2 runs other tests sequentially, then both drain queue.
+// 3. For any test that fails, compares the failure against origin/main in a shared isolated worktree.
 // 4. Preloads a real-time flush hook on baseRef to terminate early the moment an upstream error is confirmed.
 // 5. Exits with 0 if all failures are known upstream bugs, or 1 if any new regression exists.
 
@@ -13,16 +13,17 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-// earth.mjs is placed first so Worker 1 picks it up immediately while Worker 2 runs the other 7 tests
+// Schedule longest tests first across the 2 workers so both finish around the same time
 const TESTS = [
   'tests/earth.mjs',
-  'tests/preview.mjs',
-  'tests/smoke.mjs',
-  'tests/spacex.mjs',
   'tests/mobile.mjs',
-  'tests/motion.mjs',
+  'tests/smoke.mjs',
   'tests/pipsmooth.mjs',
-  'tests/wallpaper.mjs'
+  'tests/moon.mjs',
+  'tests/motion.mjs',
+  'tests/wallpaper.mjs',
+  'tests/preview.mjs',
+  'tests/spacex.mjs'
 ];
 
 function runCmd(command, args, cwd = ROOT, env = process.env) {
@@ -90,43 +91,35 @@ async function getBaseRef() {
   }
 }
 
-// Runs the failed test on baseRef to confirm whether the failure already exists on main.
-// Preloads an in-memory error flush hook so the instant an error or timeout occurs,
-// it is immediately emitted to stderr and matched against targetErrors, killing the base
-// run early and saving runner minutes.
-function runOnBaseStreaming(testRelPath, baseRef, targetErrors = []) {
-  return new Promise((resolve) => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gcdatlas-main-'));
-    let cleaned = false;
-    const cleanup = () => {
-      if (cleaned) return;
-      cleaned = true;
-      try {
-        execFileSync('git', ['worktree', 'remove', '--force', tmpDir], { cwd: ROOT, stdio: 'ignore' });
-      } catch {}
-      try {
-        fs.rmSync(tmpDir, { recursive: true, force: true });
-      } catch {}
-    };
-
+function setupBaseWorktree(baseRef) {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gcdatlas-main-'));
+  const cleanup = () => {
     try {
-      execFileSync('git', ['worktree', 'add', '--detach', tmpDir, baseRef], { cwd: ROOT, stdio: 'ignore' });
+      execFileSync('git', ['worktree', 'remove', '--force', tmpDir], { cwd: ROOT, stdio: 'ignore' });
+    } catch {}
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch {}
+  };
 
-      // Link node_modules so Playwright and dependencies are immediately available
-      const srcModules = path.join(ROOT, 'node_modules');
-      const dstModules = path.join(tmpDir, 'node_modules');
-      if (fs.existsSync(srcModules) && !fs.existsSync(dstModules)) {
-        try {
-          fs.symlinkSync(srcModules, dstModules, 'junction');
-        } catch {}
-      }
+  try {
+    execFileSync('git', ['worktree', 'add', '--detach', tmpDir, baseRef], { cwd: ROOT, stdio: 'ignore' });
 
-      // Build main
-      spawnSync('node', ['build.mjs'], { cwd: tmpDir, stdio: 'ignore' });
+    const srcModules = path.join(ROOT, 'node_modules');
+    const dstModules = path.join(tmpDir, 'node_modules');
+    if (fs.existsSync(srcModules) && !fs.existsSync(dstModules)) {
+      try {
+        fs.symlinkSync(srcModules, dstModules, 'junction');
+      } catch {}
+    }
 
-      // Write preload flush hook
-      const hookPath = path.join(tmpDir, 'flush-hook.mjs');
-      const hookCode = `
+    const buildRes = spawnSync('node', ['build.mjs'], { cwd: tmpDir, stdio: 'pipe', encoding: 'utf8' });
+    if (buildRes.status !== 0) {
+      throw new Error(`Base build failed: ${buildRes.stderr || buildRes.stdout}`);
+    }
+
+    const hookPath = path.join(tmpDir, 'flush-hook.mjs');
+    const hookCode = `
 const origPush = Array.prototype.push;
 Array.prototype.push = function(...args) {
   for (const arg of args) {
@@ -142,50 +135,60 @@ Array.prototype.push = function(...args) {
   return origPush.apply(this, args);
 };
 `;
-      fs.writeFileSync(hookPath, hookCode);
+    fs.writeFileSync(hookPath, hookCode);
 
-      let output = '';
-      let confirmedMatch = false;
-      const proc = spawn('node', ['--import', hookPath, testRelPath], {
-        cwd: tmpDir,
-        stdio: ['ignore', 'pipe', 'pipe']
-      });
+    return { tmpDir, hookPath, cleanup };
+  } catch (err) {
+    cleanup();
+    throw err;
+  }
+}
 
-      const checkChunk = (chunk) => {
-        const text = chunk.toString();
-        output += text;
-        process.stdout.write(text);
-
-        // Check if an error signature matching the branch failure has appeared on main
-        const currentErrors = extractErrorSignatures(output);
-        const match = targetErrors.find(e => currentErrors.includes(e));
-        if (match && !confirmedMatch) {
-          confirmedMatch = true;
-          console.log(`\n[Verified upstream failure on ${baseRef}: matching error found early (${match}). Terminating base run.]`);
-          proc.kill('SIGTERM');
-          setTimeout(() => {
-            try { proc.kill('SIGKILL'); } catch {}
-          }, 2000);
-        }
-      };
-
-      proc.stdout.on('data', checkChunk);
-      proc.stderr.on('data', checkChunk);
-
-      proc.on('close', (code) => {
-        cleanup();
-        resolve({ code: confirmedMatch ? 1 : (code ?? 1), output, confirmedMatch });
-      });
-
-      proc.on('error', (err) => {
-        cleanup();
-        resolve({ code: 1, output: String(err), confirmedMatch: false });
-      });
-
-    } catch (err) {
-      cleanup();
-      resolve({ code: 1, output: String(err), confirmedMatch: false });
+// Runs the failed test on baseRef to confirm whether the failure already exists on main.
+// Preloads an in-memory error flush hook so the instant an error or timeout occurs,
+// it is immediately emitted to stderr and matched against targetErrors, killing the base
+// run early and saving runner minutes.
+function runOnBaseStreaming(tmpDir, hookPath, testRelPath, baseRef, targetErrors = []) {
+  return new Promise((resolve) => {
+    if (!fs.existsSync(path.join(tmpDir, testRelPath))) {
+      resolve({ code: 0, output: `Test ${testRelPath} does not exist on ${baseRef}`, confirmedMatch: false });
+      return;
     }
+
+    let output = '';
+    let confirmedMatch = false;
+    const proc = spawn('node', ['--import', hookPath, testRelPath], {
+      cwd: tmpDir,
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+
+    const checkChunk = (chunk) => {
+      const text = chunk.toString();
+      output += text;
+
+      // Check if an error signature matching the branch failure has appeared on main
+      const currentErrors = extractErrorSignatures(output);
+      const match = targetErrors.find(e => currentErrors.includes(e));
+      if (match && !confirmedMatch) {
+        confirmedMatch = true;
+        output += `\n[Verified upstream failure on ${baseRef}: matching error found early (${match}). Terminating base run.]\n`;
+        proc.kill('SIGTERM');
+        setTimeout(() => {
+          try { proc.kill('SIGKILL'); } catch {}
+        }, 2000);
+      }
+    };
+
+    proc.stdout.on('data', checkChunk);
+    proc.stderr.on('data', checkChunk);
+
+    proc.on('close', (code) => {
+      resolve({ code: confirmedMatch ? 1 : (code ?? 1), output, confirmedMatch });
+    });
+
+    proc.on('error', (err) => {
+      resolve({ code: 1, output: String(err), confirmedMatch: false });
+    });
   });
 }
 
@@ -250,33 +253,55 @@ async function main() {
   const regressions = [];
   const upstreamIssues = [];
 
-  for (const fail of failedTests) {
-    if (!baseRef) {
+  if (!baseRef) {
+    for (const fail of failedTests) {
       regressions.push({ file: fail.file, reason: 'Failed and no base branch available to compare' });
-      continue;
     }
+  } else {
+    let baseEnv = null;
+    try {
+      console.log(`Preparing shared baseline worktree for ${baseRef}...`);
+      baseEnv = setupBaseWorktree(baseRef);
+      const baseQueue = [...failedTests];
 
-    console.log(`Checking ${fail.file} on ${baseRef}...`);
-    const baseRun = await runOnBaseStreaming(fail.file, baseRef, fail.errors);
+      async function runBaseWorker(workerId) {
+        while (baseQueue.length > 0) {
+          const fail = baseQueue.shift();
+          console.log(`[Base Worker ${workerId}] >>> Checking ${fail.file} on ${baseRef}`);
+          const t0 = Date.now();
+          const baseRun = await runOnBaseStreaming(baseEnv.tmpDir, baseEnv.hookPath, fail.file, baseRef, fail.errors);
+          const dur = ((Date.now() - t0) / 1000).toFixed(1);
+          console.log(`[Base Worker ${workerId}] <<< Finished ${fail.file} on ${baseRef} in ${dur}s (exit: ${baseRun.code})`);
+          if (baseRun.output.trim()) {
+            console.log(`--- [Base Worker ${workerId}] Output for ${fail.file} ---\n${baseRun.output.trim()}\n--- [End of base ${fail.file}] ---\n`);
+          }
 
-    if (baseRun.code !== 0) {
-      const baseErrors = extractErrorSignatures(baseRun.output);
-      const matches = fail.errors.filter(e => baseErrors.includes(e));
-      if (baseRun.confirmedMatch || matches.length > 0) {
-        upstreamIssues.push({
-          file: fail.file,
-          errors: fail.errors,
-          baseErrors: baseErrors.length ? baseErrors : fail.errors
-        });
-        continue;
+          if (baseRun.code !== 0) {
+            const baseErrors = extractErrorSignatures(baseRun.output);
+            const matches = fail.errors.filter(e => baseErrors.includes(e));
+            if (baseRun.confirmedMatch || matches.length > 0) {
+              upstreamIssues.push({
+                file: fail.file,
+                errors: fail.errors,
+                baseErrors: baseErrors.length ? baseErrors : fail.errors
+              });
+              continue;
+            }
+          }
+
+          regressions.push({
+            file: fail.file,
+            branchErrors: fail.errors,
+            baseOutput: baseRun.output.slice(0, 500)
+          });
+        }
       }
-    }
 
-    regressions.push({
-      file: fail.file,
-      branchErrors: fail.errors,
-      baseOutput: baseRun.output.slice(0, 500)
-    });
+      const workerCount = Math.min(2, failedTests.length);
+      await Promise.all(Array.from({ length: workerCount }, (_, i) => runBaseWorker(i + 1)));
+    } finally {
+      if (baseEnv) baseEnv.cleanup();
+    }
   }
 
   console.log('\n======================================================================');
