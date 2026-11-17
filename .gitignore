@@ -10,3 +10,6 @@ tests/out/
 .vercel/
 tools/cache/
 .claude/worktrees/
+
+# Antigravity drops its built-in skill here
+/skills/
